@@ -11,13 +11,10 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { CurrentUserId } from '../../common/decorators/current-user.decorator';
-import {
-  DeviceId,
-  AccessToken,
-} from '../../common/decorators/header.decorator';
 import { RefreshTokenResponse } from './interfaces/auth-response.interface';
+import { AccessToken, DeviceId } from '@common/decorators/header.decorator';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+import { CurrentUserId } from '@common/decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {

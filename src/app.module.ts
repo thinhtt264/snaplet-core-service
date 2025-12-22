@@ -3,6 +3,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import configuration from '@config/configuration';
 import { DatabaseModule } from '@database/database.module';
+import { CommonJwtModule } from '@common/jwt/jwt.module';
 import { HealthModule } from '@modules/health/health.module';
 import { PostsModule } from '@modules/posts/posts.module';
 import { RelationshipsModule } from '@modules/relationships/relationships.module';
@@ -14,15 +15,13 @@ import { LoggingInterceptor } from '@common/interceptors/logging.interceptor';
 
 @Module({
   imports: [
-    // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
       envFilePath: '.env',
     }),
-    // Database
     DatabaseModule,
-    // Modules
+    CommonJwtModule,
     AuthModule,
     HealthModule,
     PostsModule,

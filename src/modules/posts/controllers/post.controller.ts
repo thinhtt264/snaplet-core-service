@@ -11,7 +11,7 @@ export class PostController {
   constructor(private readonly postService: PostService) {}
 
   @Get('feed')
-  async getFriendsFeed(
+  async getPostsFeed(
     @CurrentUserId() userId: string,
     @Query() query: GetPostsQueryDto,
   ): Promise<GetPostsResponse> {

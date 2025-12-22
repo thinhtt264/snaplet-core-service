@@ -1,6 +1,6 @@
+import { AbstractDocument } from '@database/abstract.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
-import { AbstractDocument } from '../../../database/abstract.schema';
 
 export enum RelationshipStatus {
   PENDING = 'pending',

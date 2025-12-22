@@ -1,3 +1,4 @@
+import { API_RESPONSE_MESSAGE } from '@common/decorators/api-response.decorator';
 import {
   Injectable,
   NestInterceptor,
@@ -8,7 +9,6 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { API_RESPONSE_MESSAGE } from '../decorators/api-response.decorator';
 
 export interface ResponseStatus {
   code: number;
