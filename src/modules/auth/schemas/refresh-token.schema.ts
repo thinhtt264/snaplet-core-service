@@ -1,13 +1,13 @@
+import { AbstractDocument } from '@database/abstract.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { AbstractDocument } from '../../../database/abstract.schema';
 import { Types } from 'mongoose';
 
 @Schema({ collection: 'refresh_tokens', timestamps: true })
 export class RefreshToken extends AbstractDocument {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })
+  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   userId: Types.ObjectId;
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true })
   deviceId: string;
 
   @Prop({ required: true, unique: true, index: true })
@@ -19,7 +19,17 @@ export class RefreshToken extends AbstractDocument {
 
 export const RefreshTokenSchema = SchemaFactory.createForClass(RefreshToken);
 
-// Create indexes
-RefreshTokenSchema.index({ userId: 1, deviceId: 1 }, { unique: true }); // 1 token per device per user
-RefreshTokenSchema.index({ hashedToken: 1 }, { unique: true });
+// Optimized indexes - Hard delete approach (không dùng soft delete)
+// 1. Compound unique index: 1 token per device per user
+//    Tối ưu cho: findByUserIdAndDevice, create (upsert), deleteByUserIdAndDevice
+RefreshTokenSchema.index(
+  { userId: 1, deviceId: 1 },
+  { unique: true, name: 'userId_deviceId_unique' },
+);
+
+// 2. Index cho query deleteByUserId (chỉ có userId, không có deviceId)
+//    Compound index có thể dùng left-prefix nhưng index riêng sẽ tối ưu hơn
+RefreshTokenSchema.index({ userId: 1 }, { name: 'userId' });
+
+// 3. TTL index để tự động xóa expired tokens
 RefreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
