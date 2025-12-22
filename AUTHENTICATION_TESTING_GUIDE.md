@@ -222,7 +222,10 @@ if (pm.response.code === 200) {
 ### 5. Refresh Token
 **Làm mới access token bằng refresh token**
 
-**Lưu ý:** Refresh token được trả về trong response của register/login. Bạn cần lưu refresh token vào environment variable để sử dụng cho endpoint này.
+**Lưu ý:** 
+- Refresh token và access token được trả về trong response của register/login
+- Bạn cần lưu cả hai tokens vào environment variables để sử dụng cho endpoint này
+- AccessToken được gửi trong body (có thể expired, chỉ cần decode để lấy userId)
 
 #### Request
 - **Method:** `POST`
@@ -235,23 +238,35 @@ if (pm.response.code === 200) {
 - **Body (JSON):**
 ```json
 {
-  "refreshToken": "{{refresh_token}}"
+  "refreshToken": "{{refresh_token}}",
+  "accessToken": "{{access_token}}"
 }
 ```
+
+**Giải thích:**
+- `refreshToken`: Refresh token từ login/register (bắt buộc)
+- `accessToken`: Access token hiện tại (có thể expired, chỉ cần decode để lấy userId) (bắt buộc)
+- `X-Device-Id`: Device ID từ header (bắt buộc)
 
 #### Response Success (200 OK)
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-#### Script để lưu Access Token mới (Postman Tests)
+**Lưu ý:** Response trả về cả accessToken và refreshToken mới (rotate refresh token để tăng bảo mật)
+
+#### Script để lưu Tokens mới (Postman Tests)
 ```javascript
 if (pm.response.code === 200) {
     const response = pm.response.json();
     if (response.accessToken) {
         pm.environment.set("access_token", response.accessToken);
+    }
+    if (response.refreshToken) {
+        pm.environment.set("refresh_token", response.refreshToken);
     }
 }
 ```
@@ -588,7 +603,10 @@ if (pm.response.code === 200) {
 1. Login → Nhận access token và refresh token
 2. Đợi access token hết hạn (hoặc dùng token cũ)
 3. Verify token → `success: false` (token expired)
-4. Refresh token với refresh token đã lưu → Nhận access token mới
+4. Refresh token với cả refreshToken và accessToken trong body:
+   - Body: `{ "refreshToken": "...", "accessToken": "..." }` (accessToken có thể expired)
+   - Header: `X-Device-Id: {{device_id}}`
+   - → Nhận access token mới và refresh token mới (rotate)
 5. Verify token mới → `success: true`
 6. Logout
 7. Thử refresh token lại → Fail (vì đã logout)
@@ -679,7 +697,7 @@ if (pm.response.code === 200) {
 3. **Test Flow:** Chạy các test cases theo thứ tự logic (register → login → verify → refresh → logout)
 4. **Clean Up:** Sau khi test xong, có thể logout để cleanup refresh tokens
 5. **Multiple Environments:** Tạo nhiều environments cho dev, staging, production
-6. **Refresh Token:** Refresh token được trả về trong response của register/login, lưu vào environment để sử dụng cho refresh endpoint
+6. **Refresh Token:** Cả refresh token và access token được trả về trong response của register/login, lưu vào environment để sử dụng cho refresh endpoint (cả hai tokens đều cần trong body)
 
 ---
 
