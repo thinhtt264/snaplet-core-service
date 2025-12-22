@@ -1,7 +1,10 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { RelationshipRepository } from '../repositories/relationship.repository';
-import { GetFriendsResponseDto, FriendDto } from '../dto/friend-response.dto';
+import {
+  GetFriendsResponse,
+  Friend,
+} from '../interfaces/friend-response.interface';
 
 @Injectable()
 export class RelationshipService {
@@ -13,7 +16,7 @@ export class RelationshipService {
    * Lấy danh sách bạn bè của user
    * Client sẽ cache list này để reuse khi refresh feed
    */
-  async getFriends(userId: string): Promise<GetFriendsResponseDto> {
+  async getFriends(userId: string): Promise<GetFriendsResponse> {
     try {
       const userObjectId = new Types.ObjectId(userId);
 
@@ -22,7 +25,7 @@ export class RelationshipService {
           userObjectId,
         );
 
-      const friends: FriendDto[] = friendsData.map((item) => ({
+      const friends: Friend[] = friendsData.map((item) => ({
         id: item.friendId.toString(),
         username: item.friend?.username || '',
         displayName: item.friend?.displayName || '',

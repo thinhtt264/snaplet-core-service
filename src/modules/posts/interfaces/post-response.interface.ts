@@ -1,4 +1,4 @@
-export class PostResponseDto {
+export interface PostResponse {
   id: string;
   userId: string;
   username: string;
@@ -11,13 +11,10 @@ export class PostResponseDto {
   isOwnPost: boolean;
 }
 
-export class GetPostsResponseDto {
-  data: PostResponseDto[];
+export interface GetPostsResponse {
+  data: PostResponse[];
   pagination: {
-    total: number;
     offset: number;
     limit: number;
-    hasNextPage: boolean;
-    hasPreviousPage: boolean;
   };
 }

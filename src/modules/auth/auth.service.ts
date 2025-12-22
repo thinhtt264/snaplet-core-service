@@ -8,8 +8,8 @@ import { UserValidationService } from '../users/services/user-validation.service
 import { RefreshTokenRepository } from './repositories/refresh-token.repository';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { AuthResponseDto } from './dto/auth-response.dto';
-import { calculateExpirationDate } from '../../common/utils';
+import { AuthResponse } from './interfaces/auth-response.interface';
+import { calculateExpirationDate } from '@common/utils';
 import { validateRefreshTokenAndDevice } from './validators/auth.validator';
 
 @Injectable()
@@ -28,7 +28,7 @@ export class AuthService {
   async register(
     registerDto: RegisterDto,
     deviceId: string,
-  ): Promise<AuthResponseDto> {
+  ): Promise<AuthResponse> {
     // Validate data trước khi tạo user
     await this.userValidationService.validateUserUnique(
       registerDto.email,
@@ -54,7 +54,10 @@ export class AuthService {
     await this.saveRefreshToken(user._id.toString(), deviceId, refreshToken);
 
     return {
-      accessToken,
+      token: {
+        accessToken,
+        refreshToken,
+      },
       user: {
         id: user._id.toString(),
         email: user.email,
@@ -69,7 +72,7 @@ export class AuthService {
   /**
    * Đăng nhập
    */
-  async login(loginDto: LoginDto, deviceId: string): Promise<AuthResponseDto> {
+  async login(loginDto: LoginDto, deviceId: string): Promise<AuthResponse> {
     const user = await this.userService.validateUser(
       loginDto.email,
       loginDto.password,
@@ -89,7 +92,10 @@ export class AuthService {
     await this.saveRefreshToken(user._id.toString(), deviceId, refreshToken);
 
     return {
-      accessToken,
+      token: {
+        accessToken,
+        refreshToken,
+      },
       user: {
         id: user._id.toString(),
         email: user.email,

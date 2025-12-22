@@ -6,6 +6,4 @@ export interface IPostRepository {
     limit: number,
     skip: number,
   ): Promise<any[]>;
-
-  countPostsByUserIds(userIds: Types.ObjectId[]): Promise<number>;
 }

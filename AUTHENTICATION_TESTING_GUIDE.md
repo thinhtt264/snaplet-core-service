@@ -124,7 +124,10 @@ Tạo một Collection mới tên "Authentication API Tests" và thêm các requ
 #### Response Success (201 Created)
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "550e8400-e29b-41d4-a716-446655440000"
+  },
   "user": {
     "id": "507f1f77bcf86cd799439011",
     "email": "newuser@example.com",
@@ -136,15 +139,18 @@ Tạo một Collection mới tên "Authentication API Tests" và thêm các requ
 }
 ```
 
-#### Script để lưu Access Token (Postman Tests)
+#### Script để lưu Tokens (Postman Tests)
 Thêm script sau vào tab "Tests" của request:
 ```javascript
 if (pm.response.code === 201) {
     const response = pm.response.json();
-    if (response.data && response.data.accessToken) {
-        pm.environment.set("access_token", response.data.accessToken);
-    } else if (response.accessToken) {
-        pm.environment.set("access_token", response.accessToken);
+    if (response.token) {
+        if (response.token.accessToken) {
+            pm.environment.set("access_token", response.token.accessToken);
+        }
+        if (response.token.refreshToken) {
+            pm.environment.set("refresh_token", response.token.refreshToken);
+        }
     }
 }
 ```
@@ -173,7 +179,10 @@ if (pm.response.code === 201) {
 #### Response Success (200 OK)
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "550e8400-e29b-41d4-a716-446655440000"
+  },
   "user": {
     "id": "507f1f77bcf86cd799439011",
     "email": "user@example.com",
@@ -185,15 +194,18 @@ if (pm.response.code === 201) {
 }
 ```
 
-#### Script để lưu Access Token (Postman Tests)
+#### Script để lưu Tokens (Postman Tests)
 Thêm script sau vào tab "Tests":
 ```javascript
 if (pm.response.code === 200) {
     const response = pm.response.json();
-    if (response.data && response.data.accessToken) {
-        pm.environment.set("access_token", response.data.accessToken);
-    } else if (response.accessToken) {
-        pm.environment.set("access_token", response.accessToken);
+    if (response.token) {
+        if (response.token.accessToken) {
+            pm.environment.set("access_token", response.token.accessToken);
+        }
+        if (response.token.refreshToken) {
+            pm.environment.set("refresh_token", response.token.refreshToken);
+        }
     }
 }
 ```
@@ -203,9 +215,7 @@ if (pm.response.code === 200) {
 ### 5. Refresh Token
 **Làm mới access token bằng refresh token**
 
-**Lưu ý:** Refresh token được lưu trong database và không được trả về cho client. Để test endpoint này, bạn cần:
-1. Login thành công để tạo refresh token trong database
-2. Sử dụng refresh token từ database (hoặc implement endpoint để lấy refresh token)
+**Lưu ý:** Refresh token được trả về trong response của register/login. Bạn cần lưu refresh token vào environment variable để sử dụng cho endpoint này.
 
 #### Request
 - **Method:** `POST`
@@ -233,9 +243,7 @@ if (pm.response.code === 200) {
 ```javascript
 if (pm.response.code === 200) {
     const response = pm.response.json();
-    if (response.data && response.data.accessToken) {
-        pm.environment.set("access_token", response.data.accessToken);
-    } else if (response.accessToken) {
+    if (response.accessToken) {
         pm.environment.set("access_token", response.accessToken);
     }
 }
@@ -344,10 +352,10 @@ if (pm.response.code === 200) {
    - Password >= 8 characters
    - Header `X-Device-Id`
 4. Verify response status = 201
-5. Verify response có `accessToken` và `user` object
-6. Lưu `accessToken` vào environment variable
+5. Verify response có `token` object (chứa `accessToken` và `refreshToken`) và `user` object
+6. Lưu `accessToken` và `refreshToken` vào environment variables
 
-**Expected Result:** User được tạo thành công, nhận được access token
+**Expected Result:** User được tạo thành công, nhận được access token và refresh token
 
 ---
 
@@ -419,10 +427,10 @@ if (pm.response.code === 200) {
    - Valid email và password
    - Header `X-Device-Id`
 2. Verify response status = 200
-3. Verify response có `accessToken` và `user` object
-4. Lưu `accessToken` vào environment variable
+3. Verify response có `token` object (chứa `accessToken` và `refreshToken`) và `user` object
+4. Lưu `accessToken` và `refreshToken` vào environment variables
 
-**Expected Result:** Đăng nhập thành công, nhận được access token
+**Expected Result:** Đăng nhập thành công, nhận được access token và refresh token
 
 ---
 
@@ -558,10 +566,10 @@ if (pm.response.code === 200) {
 ### Scenario 1: Flow Đăng Ký và Đăng Nhập Hoàn Chỉnh
 1. Check email available (`/users/email-availability`) → `available: true`
 2. Check username available (`/users/username-availability`) → `available: true`
-3. Register với email/username đó → Success, nhận access token
+3. Register với email/username đó → Success, nhận access token và refresh token
 4. Check email available lại → `available: false`
 5. Check username available lại → `available: false`
-6. Login với email/password vừa đăng ký → Success, nhận access token
+6. Login với email/password vừa đăng ký → Success, nhận access token và refresh token
 7. Verify token → `success: true`
 8. Logout → Success
 9. Verify token lại → Vẫn valid (vì chỉ revoke refresh token, không invalidate access token)
@@ -570,10 +578,10 @@ if (pm.response.code === 200) {
 ---
 
 ### Scenario 2: Flow Refresh Token
-1. Login → Nhận access token
+1. Login → Nhận access token và refresh token
 2. Đợi access token hết hạn (hoặc dùng token cũ)
 3. Verify token → `success: false` (token expired)
-4. Refresh token → Nhận access token mới
+4. Refresh token với refresh token đã lưu → Nhận access token mới
 5. Verify token mới → `success: true`
 6. Logout
 7. Thử refresh token lại → Fail (vì đã logout)
@@ -581,8 +589,8 @@ if (pm.response.code === 200) {
 ---
 
 ### Scenario 3: Multi-Device Login
-1. Login với device_id_1 → Nhận access token 1
-2. Login với device_id_2 (cùng user) → Nhận access token 2
+1. Login với device_id_1 → Nhận access token 1 và refresh token 1
+2. Login với device_id_2 (cùng user) → Nhận access token 2 và refresh token 2
 3. Logout với device_id_1 → Success
 4. Thử refresh token của device_id_1 → Fail
 5. Thử refresh token của device_id_2 → Success (vì device 2 chưa logout)
@@ -660,10 +668,11 @@ if (pm.response.code === 200) {
 ### Tips
 
 1. **Sử dụng Environment Variables:** Luôn sử dụng `{{variable_name}}` thay vì hardcode values
-2. **Lưu Token Tự Động:** Sử dụng Postman Tests script để tự động lưu access token sau khi login/register
-3. **Test Flow:** Chạy các test cases theo thứ tự logic (register → login → verify → logout)
+2. **Lưu Token Tự Động:** Sử dụng Postman Tests script để tự động lưu cả access token và refresh token sau khi login/register
+3. **Test Flow:** Chạy các test cases theo thứ tự logic (register → login → verify → refresh → logout)
 4. **Clean Up:** Sau khi test xong, có thể logout để cleanup refresh tokens
 5. **Multiple Environments:** Tạo nhiều environments cho dev, staging, production
+6. **Refresh Token:** Refresh token được trả về trong response của register/login, lưu vào environment để sử dụng cho refresh endpoint
 
 ---
 

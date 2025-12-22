@@ -76,13 +76,4 @@ export class PostRepository implements IPostRepository {
 
     return this.postModel.aggregate(pipeline).exec();
   }
-
-  async countPostsByUserIds(userIds: Types.ObjectId[]): Promise<number> {
-    return this.postModel
-      .countDocuments({
-        userId: { $in: userIds },
-        isDeleted: { $ne: true },
-      })
-      .exec();
-  }
 }

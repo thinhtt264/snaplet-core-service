@@ -1,7 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { PostService } from '../services/post.service';
 import { GetPostsQueryDto } from '../dto/get-posts-query.dto';
-import { GetPostsResponseDto } from '../dto/post-response.dto';
+import { GetPostsResponse } from '../interfaces/post-response.interface';
 import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 
@@ -14,8 +14,8 @@ export class PostController {
   async getFriendsFeed(
     @CurrentUserId() userId: string,
     @Query() query: GetPostsQueryDto,
-  ): Promise<GetPostsResponseDto> {
-    return this.postService.getPostsFeed(
+  ): Promise<GetPostsResponse> {
+    return await this.postService.getPostsFeed(
       userId,
       query.friendIds || [],
       query.limit || 10,

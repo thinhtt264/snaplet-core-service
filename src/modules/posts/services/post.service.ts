@@ -1,7 +1,10 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { PostRepository } from '../repositories/post.repository';
-import { GetPostsResponseDto, PostResponseDto } from '../dto/post-response.dto';
+import {
+  GetPostsResponse,
+  PostResponse,
+} from '../interfaces/post-response.interface';
 
 @Injectable()
 export class PostService {
@@ -21,7 +24,7 @@ export class PostService {
     friendIds: string[] = [],
     limit: number = 10,
     offset: number = 0,
-  ): Promise<GetPostsResponseDto> {
+  ): Promise<GetPostsResponse> {
     try {
       const userObjectId = new Types.ObjectId(userId);
       const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
@@ -34,11 +37,8 @@ export class PostService {
         return {
           data: [],
           pagination: {
-            total: 0,
             offset,
             limit,
-            hasNextPage: false,
-            hasPreviousPage: false,
           },
         };
       }
@@ -50,16 +50,11 @@ export class PostService {
         offset,
       );
 
-      const total = await this.postRepository.countPostsByUserIds(userIds);
-
       return {
         data: this.transformPosts(posts, userId),
         pagination: {
-          total,
           offset,
           limit,
-          hasNextPage: offset + limit < total,
-          hasPreviousPage: offset > 0,
         },
       };
     } catch (error) {
@@ -70,9 +65,9 @@ export class PostService {
   }
 
   /**
-   * Transform raw data to DTO
+   * Transform raw data to response
    */
-  private transformPosts(posts: any[], userId: string): PostResponseDto[] {
+  private transformPosts(posts: any[], userId: string): PostResponse[] {
     return posts.map((post) => ({
       id: post._id.toString(),
       userId: post.userId.toString(),
