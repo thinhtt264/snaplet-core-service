@@ -50,7 +50,6 @@ export class AuthService {
       deviceId,
     );
 
-    // Lưu refreshToken vào database (không trả về cho client)
     await this.saveRefreshToken(user._id.toString(), deviceId, refreshToken);
 
     return {
