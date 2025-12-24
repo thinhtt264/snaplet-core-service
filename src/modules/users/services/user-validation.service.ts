@@ -1,6 +1,7 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { UserRepository } from '../repositories/user.repository';
-import { validateEmailFormat } from '../../../common/utils';
+import { validateEmailFormat, verifyPassword } from '@common/utils';
+import { User } from '../schemas/user.schema';
 
 @Injectable()
 export class UserValidationService {
@@ -64,5 +65,19 @@ export class UserValidationService {
     } catch {
       return { available: false };
     }
+  }
+
+  async validateUser(email: string, password: string): Promise<User | null> {
+    const user = await this.userRepository.findByEmail(email);
+    if (!user) {
+      return null;
+    }
+
+    const isPasswordValid = await verifyPassword(password, user.password);
+    if (!isPasswordValid) {
+      return null;
+    }
+
+    return user;
   }
 }

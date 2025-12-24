@@ -2,28 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { UserRepository } from '../repositories/user.repository';
 import { User } from '../schemas/user.schema';
 import * as bcrypt from 'bcrypt';
+import { IUserProfileResponse } from '../interfaces/user-response.interface';
 
 @Injectable()
 export class UserService {
   constructor(private readonly userRepository: UserRepository) {}
 
-  /**
-   * Tìm user theo email
-   */
-  async findByEmail(email: string): Promise<User | null> {
-    return this.userRepository.findByEmail(email);
-  }
-
-  /**
-   * Tìm user theo username
-   */
-  async findByUsername(username: string): Promise<User | null> {
-    return this.userRepository.findByUsername(username);
-  }
-
-  /**
-   * Tìm user theo ID
-   */
   async findById(id: string): Promise<User | null> {
     return this.userRepository.findById(id);
   }
@@ -60,30 +44,22 @@ export class UserService {
     });
   }
 
-  /**
-   * Verify password
-   */
-  async verifyPassword(
-    plainPassword: string,
-    hashedPassword: string,
-  ): Promise<boolean> {
-    return bcrypt.compare(plainPassword, hashedPassword);
-  }
-
-  /**
-   * Validate user credentials
-   */
-  async validateUser(email: string, password: string): Promise<User | null> {
-    const user = await this.findByEmail(email);
+  async getUserInfoByUsername(
+    username: string,
+  ): Promise<IUserProfileResponse | null> {
+    const user = await this.userRepository.findByUsername(username);
     if (!user) {
       return null;
     }
 
-    const isPasswordValid = await this.verifyPassword(password, user.password);
-    if (!isPasswordValid) {
-      return null;
-    }
-
-    return user;
+    return {
+      id: user._id.toString(),
+      email: user.email,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      avatarUrl: user.avatarUrl,
+      createdAt: user.createdAt,
+    };
   }
 }

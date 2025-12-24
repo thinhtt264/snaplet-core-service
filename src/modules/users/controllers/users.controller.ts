@@ -1,29 +1,42 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Param,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserValidationService } from '../services/user-validation.service';
+import { UserService } from '../services/user.service';
 import { CheckEmailDto } from '../dto/check-email.dto';
 import { CheckUsernameDto } from '../dto/check-username.dto';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly userValidationService: UserValidationService) {}
+  constructor(
+    private readonly userValidationService: UserValidationService,
+    private readonly userService: UserService,
+  ) {}
 
-  /**
-   * Check email availability
-   * GET /api/v1/users/email-availability?email=test@mail.com
-   */
   @Get('email-availability')
   checkEmail(@Query() checkEmailDto: CheckEmailDto) {
     return this.userValidationService.checkEmailAvailable(checkEmailDto.email);
   }
 
-  /**
-   * Check username availability
-   * GET /api/v1/users/username-availability?username=johndoe
-   */
   @Get('username-availability')
   checkUsername(@Query() checkUsernameDto: CheckUsernameDto) {
     return this.userValidationService.checkUsernameAvailable(
       checkUsernameDto.username,
     );
+  }
+
+  @Get('profile/:username')
+  async getUserProfile(@Param('username') username: string) {
+    const userInfo = await this.userService.getUserInfoByUsername(username);
+
+    if (!userInfo) {
+      throw new NotFoundException(`User not found`);
+    }
+
+    return userInfo;
   }
 }

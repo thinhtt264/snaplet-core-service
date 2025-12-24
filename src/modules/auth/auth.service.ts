@@ -64,7 +64,7 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto, deviceId: string): Promise<AuthResponse> {
-    const user = await this.userService.validateUser(
+    const user = await this.userValidationService.validateUser(
       loginDto.email,
       loginDto.password,
     );

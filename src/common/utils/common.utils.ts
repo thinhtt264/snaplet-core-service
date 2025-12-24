@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import * as bcrypt from 'bcrypt';
 
 /**
  * Sắp xếp 2 userId để đảm bảo user1Id < user2Id
@@ -23,4 +24,17 @@ export function sortUserIds(
   } else {
     return { user1Id: id2, user2Id: id1 };
   }
+}
+
+/**
+ * Verify password
+ * @param plainPassword - Plain password
+ * @param hashedPassword - Hashed password
+ * @returns True if password is valid, false otherwise
+ */
+export function verifyPassword(
+  plainPassword: string,
+  hashedPassword: string,
+): Promise<boolean> {
+  return bcrypt.compare(plainPassword, hashedPassword);
 }
