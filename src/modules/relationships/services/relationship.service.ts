@@ -44,10 +44,7 @@ export class RelationshipService {
       throw new ConflictException('Cannot create relationship with yourself');
     }
 
-    if (
-      !Types.ObjectId.isValid(initiatorId) ||
-      !Types.ObjectId.isValid(targetUserId)
-    ) {
+    if (!Types.ObjectId.isValid(targetUserId)) {
       throw new BadRequestException('Invalid user id');
     }
 

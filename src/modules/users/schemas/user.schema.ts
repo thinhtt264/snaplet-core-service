@@ -38,16 +38,3 @@ export class User extends AbstractDocument {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
-
-// Virtual field for displayName (computed from firstName + lastName)
-UserSchema.virtual('displayName').get(function () {
-  return `${this.firstName} ${this.lastName}`.trim();
-});
-
-// Ensure virtual fields are included in JSON output
-UserSchema.set('toJSON', { virtuals: true });
-UserSchema.set('toObject', { virtuals: true });
-
-// Create indexes
-UserSchema.index({ email: 1 }, { unique: true });
-UserSchema.index({ username: 1 }, { unique: true });
