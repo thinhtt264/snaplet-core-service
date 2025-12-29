@@ -1,5 +1,12 @@
 import { Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
+import {
+  ErrorCode,
+  MAX_RELATIONSHIPS_PER_USER,
+  RelationshipLimitReason,
+} from '@common/constants';
+import { AppException } from '@common/exception/AppException';
+import { HttpStatus } from '@nestjs/common';
 
 /**
  * Sắp xếp 2 userId để đảm bảo user1Id < user2Id
@@ -37,4 +44,20 @@ export function verifyPassword(
   hashedPassword: string,
 ): Promise<boolean> {
   return bcrypt.compare(plainPassword, hashedPassword);
+}
+
+export function throwRelationshipLimitExceeded(
+  reason: RelationshipLimitReason,
+  currentCount: number,
+) {
+  throw new AppException(
+    HttpStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.RELATIONSHIP_LIMIT_EXCEEDED,
+    `Maximum relationship limit reached (${MAX_RELATIONSHIPS_PER_USER} relationships)`,
+    {
+      reason,
+      limit: MAX_RELATIONSHIPS_PER_USER,
+      currentCount,
+    },
+  );
 }

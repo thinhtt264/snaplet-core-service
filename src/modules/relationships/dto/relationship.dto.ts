@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsString, IsEnum } from 'class-validator';
 import { RelationshipStatus } from '../schemas/relationship.schema';
 
 export class CreateRelationshipDto {
@@ -7,8 +7,10 @@ export class CreateRelationshipDto {
   targetUserId: string;
 }
 
-export class UpdateRelationshipStatusDto {
+export class RelationshipStatusDto {
   @IsNotEmpty({ message: 'Status is required' })
-  @IsString({ message: 'Status must be a string' })
+  @IsEnum(RelationshipStatus, {
+    message: 'Status must be one of: pending, accepted, blocked',
+  })
   status: RelationshipStatus;
 }

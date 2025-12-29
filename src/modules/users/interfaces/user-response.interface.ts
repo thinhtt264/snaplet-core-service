@@ -7,3 +7,11 @@ export interface IUserProfileResponse {
   avatarUrl: string;
   createdAt: Date;
 }
+
+export interface UserBasicInfoResponse {
+  userId: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string;
+}

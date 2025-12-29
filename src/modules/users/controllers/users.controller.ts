@@ -31,7 +31,7 @@ export class UsersController {
 
   @Get('profile/:username')
   async getUserProfile(@Param('username') username: string) {
-    const userInfo = await this.userService.getUserInfoByUsername(username);
+    const userInfo = await this.userService.getUserProfileByUsername(username);
 
     if (!userInfo) {
       throw new NotFoundException(`User not found`);
