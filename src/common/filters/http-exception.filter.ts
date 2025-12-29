@@ -18,6 +18,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
     let errorMessage = 'Internal server error';
+    let metaData: any = undefined;
 
     if (exception instanceof HttpException) {
       const exceptionResponse = exception.getResponse();
@@ -25,12 +26,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
         typeof exceptionResponse === 'string'
           ? exceptionResponse
           : (exceptionResponse as any)?.message || exception.message;
+      metaData = (exceptionResponse as any)?.meta || undefined;
     }
 
     response.status(status).json({
       status: {
         code: status,
         message: errorMessage,
+        meta: metaData,
       },
       data: null,
     });

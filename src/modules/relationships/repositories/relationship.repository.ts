@@ -1,17 +1,14 @@
-import {
-  Injectable,
-  ConflictException,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
   Relationship,
   RelationshipStatus,
 } from '../schemas/relationship.schema';
-import { IRelationshipRepository } from '../interfaces/relationship-repository.interface';
-import { GetRelationshipsResponse } from '../interfaces/relationship-resonse.interface';
+import {
+  IRelationshipRepository,
+  RelationshipAggregateResult,
+} from '../interfaces/relationship-repository.interface';
 import { sortUserIds } from '@common/utils/common.utils';
 
 @Injectable()
@@ -24,7 +21,7 @@ export class RelationshipRepository implements IRelationshipRepository {
   async findRelationshipsByStatus(
     userId: Types.ObjectId,
     status: RelationshipStatus,
-  ): Promise<GetRelationshipsResponse[]> {
+  ): Promise<RelationshipAggregateResult[]> {
     const results = await this.relationshipModel
       .aggregate([
         {
@@ -64,9 +61,11 @@ export class RelationshipRepository implements IRelationshipRepository {
         },
         {
           $project: {
-            id: { $toString: '$friendId' }, // friendId - ID của người bạn
+            _id: 0, // Exclude _id field (redundant with relationshipId)
+            userId: { $toString: '$friendId' }, // ID của người bạn
             username: { $ifNull: ['$friend.username', ''] },
-            displayName: { $ifNull: ['$friend.displayName', ''] },
+            firstName: { $ifNull: ['$friend.firstName', ''] },
+            lastName: { $ifNull: ['$friend.lastName', ''] },
             avatarUrl: { $ifNull: ['$friend.avatarUrl', ''] },
             relationshipId: { $toString: '$_id' }, // ID của relationship
             createdAt: 1,
@@ -79,23 +78,109 @@ export class RelationshipRepository implements IRelationshipRepository {
       ])
       .exec();
 
-    return results as GetRelationshipsResponse[];
+    return results;
   }
 
+  /**
+   * Count relationships for a user by status
+   * Pure query method - no business logic validation
+   * @param userId - User ID to count
+   * @param status - Optional status filter (if not provided, counts all statuses)
+   * @returns Count of relationships
+   */
+  async countRelationshipsByStatus(
+    userId: Types.ObjectId,
+    status?: RelationshipStatus,
+  ): Promise<number> {
+    const query: any = {
+      $or: [{ user1Id: userId }, { user2Id: userId }],
+    };
+
+    if (status) {
+      query.status = status;
+    }
+
+    return this.relationshipModel.countDocuments(query);
+  }
+
+  /**
+   * Count relationships for multiple users in a single query (optimized)
+   * @param userId1 - First user ID
+   * @param userId2 - Second user ID
+   * @param status - Optional status filter (if not provided, counts all statuses)
+   * @returns Object with counts for both users
+   */
+  async countRelationshipsForBothUsers(
+    userId1: Types.ObjectId,
+    userId2: Types.ObjectId,
+    status?: RelationshipStatus,
+  ): Promise<{ user1Count: number; user2Count: number }> {
+    // Build match conditions for each user
+    const user1Match: any = {
+      $or: [{ user1Id: userId1 }, { user2Id: userId1 }],
+    };
+    const user2Match: any = {
+      $or: [{ user1Id: userId2 }, { user2Id: userId2 }],
+    };
+
+    // Add status filter if provided
+    if (status) {
+      user1Match.status = status;
+      user2Match.status = status;
+    }
+
+    const result = await this.relationshipModel
+      .aggregate([
+        {
+          $facet: {
+            user1Count: [{ $match: user1Match }, { $count: 'count' }],
+            user2Count: [{ $match: user2Match }, { $count: 'count' }],
+          },
+        },
+      ])
+      .exec();
+
+    return {
+      user1Count: result[0]?.user1Count[0]?.count || 0,
+      user2Count: result[0]?.user2Count[0]?.count || 0,
+    };
+  }
+
+  /**
+   * Find existing relationship between two users
+   * Pure query method - no validation
+   * @param user1Id - First user ID
+   * @param user2Id - Second user ID
+   * @returns Relationship document or null if not found
+   */
+  async findExistingRelationship(
+    user1Id: Types.ObjectId,
+    user2Id: Types.ObjectId,
+  ): Promise<Relationship | null> {
+    const { user1Id: sortedUser1Id, user2Id: sortedUser2Id } = sortUserIds(
+      user1Id,
+      user2Id,
+    );
+    return this.relationshipModel
+      .findOne({
+        user1Id: sortedUser1Id,
+        user2Id: sortedUser2Id,
+      })
+      .exec();
+  }
+
+  /**
+   * Create a new relationship
+   * Pure data access - no validation
+   * @param initiatorId - User who initiates the relationship
+   * @param targetUserId - User who receives the relationship request
+   * @returns Created relationship document
+   */
   async createRelationship(
     initiatorId: Types.ObjectId,
     targetUserId: Types.ObjectId,
   ): Promise<Relationship> {
     const { user1Id, user2Id } = sortUserIds(initiatorId, targetUserId);
-
-    const existingRelationship = await this.relationshipModel.findOne({
-      user1Id,
-      user2Id,
-    });
-
-    if (existingRelationship) {
-      throw new ConflictException('Relationship already exists');
-    }
 
     const newRelationship = new this.relationshipModel({
       user1Id,
@@ -107,51 +192,52 @@ export class RelationshipRepository implements IRelationshipRepository {
     return newRelationship.save();
   }
 
-  async updateRelationshipStatus(
+  /**
+   * Get relationship by ID
+   * Pure query method - no validation
+   * @param relationshipId - Relationship ID
+   * @returns Relationship document or null if not found
+   */
+  async getRelationshipById(
     relationshipId: Types.ObjectId,
-    userId: Types.ObjectId,
+  ): Promise<Relationship | null> {
+    return this.relationshipModel.findById(relationshipId).exec();
+  }
+
+  /**
+   * Update relationship status
+   * Pure data access - no validation
+   * @param relationship - Relationship document to update
+   * @param status - New status
+   * @returns Updated relationship document
+   */
+  async updateRelationshipStatus(
+    relationship: Relationship,
     status: RelationshipStatus,
   ): Promise<Relationship> {
-    const relationship = await this.relationshipModel.findById(relationshipId);
-
-    if (!relationship) {
-      throw new NotFoundException('Relationship not found');
-    }
-
-    // Kiểm tra user có quyền update (phải là user1Id hoặc user2Id)
-    const isUser1 = relationship.user1Id.equals(userId);
-    const isUser2 = relationship.user2Id.equals(userId);
-
-    if (!isUser1 && !isUser2) {
-      throw new ForbiddenException(
-        'You do not have permission to update this relationship',
-      );
-    }
-
-    // Chỉ có thể accept từ pending
-    if (status === RelationshipStatus.ACCEPTED) {
-      if (relationship.status !== RelationshipStatus.PENDING) {
-        throw new ConflictException(
-          'Can only accept relationship with pending status',
-        );
-      }
-    }
-
     relationship.status = status;
     return relationship.save();
   }
 
-  async deleteRelationship(
+  /**
+   * Delete relationship by ID
+   * Pure data access - no validation
+   * @param relationshipId - Relationship ID to delete
+   * @returns Deleted relationship document or null if not found
+   */
+  async deleteRelationshipById(
     relationshipId: Types.ObjectId,
-    userId: Types.ObjectId,
-  ): Promise<void> {
-    const relationship = await this.relationshipModel.findOneAndDelete({
-      _id: relationshipId,
-      $or: [{ user1Id: userId }, { user2Id: userId }],
-    });
+  ): Promise<Relationship | null> {
+    return this.relationshipModel.findByIdAndDelete(relationshipId).exec();
+  }
 
-    if (!relationship) {
-      throw new NotFoundException('Relationship not found');
-    }
+  /**
+   * Delete relationship directly from relationship object
+   * Optimized - no need to query database again
+   * @param relationship - Relationship document to delete
+   * @returns Promise that resolves when deleted
+   */
+  async deleteRelationship(relationship: Relationship): Promise<void> {
+    await relationship.deleteOne();
   }
 }

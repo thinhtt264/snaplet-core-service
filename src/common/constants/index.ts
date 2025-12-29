@@ -12,5 +12,15 @@ export enum OrderDirection {
   DESC = 'desc',
 }
 
+export enum ErrorCode {
+  RELATIONSHIP_LIMIT_EXCEEDED = 'RELATIONSHIP_LIMIT_EXCEEDED',
+}
+
+export enum RelationshipLimitReason {
+  SOURCE = 'SOURCE_LIMIT',
+  TARGET = 'TARGET_LIMIT',
+}
+
+export const MAX_RELATIONSHIPS_PER_USER = 50;
 export const DEFAULT_PAGE_SIZE = 10;
 export const MAX_PAGE_SIZE = 100;

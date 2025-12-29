@@ -74,22 +74,35 @@ Tạo một Collection mới tên "Relationship API Tests" và thêm các reques
 
 #### Response Success (200 OK)
 ```json
-[
-  {
-    "id": "507f1f77bcf86cd799439011",
-    "username": "friend_username",
-    "displayName": "Friend Display Name",
-    "avatarUrl": "https://example.com/avatar.jpg",
-    "relationshipId": "507f1f77bcf86cd799439012",
-    "createdAt": "2024-01-01T00:00:00.000Z",
-    "status": "accepted"
-  }
-]
+{
+  "status": {
+    "code": 200,
+    "message": "Success"
+  },
+  "data": [
+    {
+      "id": "507f1f77bcf86cd799439011",
+      "userId": "507f1f77bcf86cd799439012",
+      "username": "friend_username",
+      "firstName": "Friend",
+      "lastName": "Name",
+      "avatarUrl": "https://example.com/avatar.jpg",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "status": "accepted"
+    }
+  ]
+}
 ```
 
 #### Response Empty (200 OK)
 ```json
-[]
+{
+  "status": {
+    "code": 200,
+    "message": "Success"
+  },
+  "data": []
+}
 ```
 
 ---
@@ -115,31 +128,41 @@ Tạo một Collection mới tên "Relationship API Tests" và thêm các reques
 #### Response Success (201 Created)
 ```json
 {
-  "_id": "507f1f77bcf86cd799439012",
-  "user1Id": "507f1f77bcf86cd799439010",
-  "user2Id": "507f1f77bcf86cd799439011",
-  "status": "pending",
-  "initiator": "507f1f77bcf86cd799439010",
-  "createdAt": "2024-01-01T00:00:00.000Z",
-  "updatedAt": "2024-01-01T00:00:00.000Z"
+  "status": {
+    "code": 201,
+    "message": "Created"
+  },
+  "data": {
+    "id": "507f1f77bcf86cd799439012",
+    "user1Id": "507f1f77bcf86cd799439010",
+    "user2Id": "507f1f77bcf86cd799439011",
+    "status": "pending",
+    "initiator": "507f1f77bcf86cd799439010",
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  }
 }
 ```
 
 #### Response Error - Relationship Already Exists (409 Conflict)
 ```json
 {
-  "statusCode": 409,
-  "message": "Relationship already exists",
-  "error": "Conflict"
+  "status": {
+    "code": 409,
+    "message": "Relationship already exists"
+  },
+  "data": null
 }
 ```
 
 #### Response Error - Cannot Create With Yourself (409 Conflict)
 ```json
 {
-  "statusCode": 409,
-  "message": "Cannot create relationship with yourself",
-  "error": "Conflict"
+  "status": {
+    "code": 409,
+    "message": "Cannot create relationship with yourself"
+  },
+  "data": null
 }
 ```
 
@@ -148,8 +171,8 @@ Thêm script sau vào tab "Tests" của request:
 ```javascript
 if (pm.response.code === 201) {
     const response = pm.response.json();
-    if (response._id) {
-        pm.environment.set("relationship_id", response._id);
+    if (response.data && response.data.id) {
+        pm.environment.set("relationship_id", response.data.id);
     }
 }
 ```
@@ -184,42 +207,75 @@ if (pm.response.code === 201) {
 #### Response Success (200 OK)
 ```json
 {
-  "_id": "507f1f77bcf86cd799439012",
-  "user1Id": "507f1f77bcf86cd799439010",
-  "user2Id": "507f1f77bcf86cd799439011",
-  "status": "accepted",
-  "initiator": "507f1f77bcf86cd799439010",
-  "createdAt": "2024-01-01T00:00:00.000Z",
-  "updatedAt": "2024-01-01T00:00:01.000Z"
+  "status": {
+    "code": 200,
+    "message": "Success"
+  },
+  "data": {
+    "id": "507f1f77bcf86cd799439012",
+    "user1Id": "507f1f77bcf86cd799439010",
+    "user2Id": "507f1f77bcf86cd799439011",
+    "status": "accepted",
+    "initiator": "507f1f77bcf86cd799439010",
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:01.000Z"
+  }
 }
 ```
 
 #### Response Error - Relationship Not Found (404 Not Found)
 ```json
 {
-  "statusCode": 404,
-  "message": "Relationship not found",
-  "error": "Not Found"
+  "status": {
+    "code": 404,
+    "message": "Relationship not found"
+  },
+  "data": null
 }
 ```
 
 #### Response Error - No Permission (403 Forbidden)
 ```json
 {
-  "statusCode": 403,
-  "message": "You do not have permission to update this relationship",
-  "error": "Forbidden"
+  "status": {
+    "code": 403,
+    "message": "You do not have permission to update this relationship"
+  },
+  "data": null
 }
 ```
 
 #### Response Error - Invalid Status Transition (409 Conflict)
 ```json
 {
-  "statusCode": 409,
-  "message": "Can only accept relationship with pending status",
-  "error": "Conflict"
+  "status": {
+    "code": 409,
+    "message": "Can only accept relationship with pending status"
+  },
+  "data": null
 }
 ```
+
+#### Response Error - Relationship Limit Exceeded (422 Unprocessable Entity)
+```json
+{
+  "status": {
+    "code": 422,
+    "message": "Maximum relationship limit reached (50 relationships)",
+    "meta": {
+      "reason": "SOURCE_LIMIT",
+      "limit": 50,
+      "currentCount": 50
+    }
+  },
+  "data": null
+}
+```
+
+**Lưu ý:** 
+- `reason` có thể là `SOURCE_LIMIT` (người gửi đạt limit) hoặc `TARGET_LIMIT` (người nhận đạt limit)
+- Limit chỉ được check khi accept relationship (PENDING → ACCEPTED)
+- User có thể tạo unlimited PENDING requests, nhưng chỉ có thể accept tối đa 50 relationships
 
 ---
 
@@ -236,26 +292,28 @@ if (pm.response.code === 201) {
 - **Path Parameters:**
   - `relationshipId`: ID của relationship cần xóa
 
-#### Response Success (200 OK)
-```json
-{}
-```
+#### Response Success (204 No Content)
+Response body rỗng (no content)
 
 #### Response Error - Relationship Not Found (404 Not Found)
 ```json
 {
-  "statusCode": 404,
-  "message": "Relationship not found",
-  "error": "Not Found"
+  "status": {
+    "code": 404,
+    "message": "Relationship not found"
+  },
+  "data": null
 }
 ```
 
 #### Response Error - No Permission (403 Forbidden)
 ```json
 {
-  "statusCode": 403,
-  "message": "You do not have permission to delete this relationship",
-  "error": "Forbidden"
+  "status": {
+    "code": 403,
+    "message": "You do not have permission to delete this relationship"
+  },
+  "data": null
 }
 ```
 
@@ -417,6 +475,28 @@ if (pm.response.code === 201) {
 
 ---
 
+### Test Case 11.1: Update Relationship Status - Relationship Limit Exceeded
+**Mục đích:** Kiểm tra không thể accept khi đã đạt limit 50 relationships
+
+**Steps:**
+1. Tạo 50 relationships accepted cho user 1
+2. User 2 gửi lời mời cho user 1 (status = pending)
+3. User 1 cố gắng accept lời mời
+4. Verify response status = 422
+5. Verify error message = "Maximum relationship limit reached (50 relationships)"
+6. Verify `status.meta.reason` = "SOURCE_LIMIT" hoặc "TARGET_LIMIT"
+7. Verify `status.meta.limit` = 50
+8. Verify `status.meta.currentCount` = 50
+
+**Expected Result:** Error về đã đạt limit relationships
+
+**Lưu ý:** 
+- Limit chỉ áp dụng cho ACCEPTED relationships
+- User có thể tạo unlimited PENDING requests
+- Chỉ khi accept (PENDING → ACCEPTED) mới check limit
+
+---
+
 ### Test Case 12: Update Relationship Status - Block
 **Mục đích:** Chặn người dùng thành công
 
@@ -467,8 +547,9 @@ if (pm.response.code === 201) {
 1. Tạo relationship giữa user 1 và user 2
 2. Login với user 1
 3. Gửi DELETE request đến `/relationships/{{relationship_id}}` với token của user 1
-4. Verify response status = 200
-5. Verify relationship đã bị xóa (get lại sẽ không tìm thấy)
+4. Verify response status = 204
+5. Verify response body rỗng (no content)
+6. Verify relationship đã bị xóa (get lại sẽ không tìm thấy)
 
 **Expected Result:** Relationship được xóa thành công
 
@@ -567,9 +648,20 @@ if (pm.response.code === 201) {
 4. Update status với relationship không tồn tại → Error 404
 5. Update status với user không có quyền → Error 403
 6. Accept từ non-pending status → Error 409
-7. Delete relationship không tồn tại → Error 404
-8. Delete relationship với user không có quyền → Error 403
-9. Get relationships không có token → Error 401
+7. Accept khi đã đạt limit 50 relationships → Error 422
+8. Delete relationship không tồn tại → Error 404
+9. Delete relationship với user không có quyền → Error 403
+10. Get relationships không có token → Error 401
+
+---
+
+### Scenario 6: Relationship Limit Test
+1. User 1 tạo 50 PENDING requests → Success (không check limit)
+2. User 1 accept 50 relationships → Success (đạt limit)
+3. User 2 gửi lời mời cho user 1 → Success (PENDING không check limit)
+4. User 1 cố accept lời mời từ user 2 → Error 422 (đã đạt limit)
+5. User 1 delete 1 relationship → Success
+6. User 1 accept lời mời từ user 2 → Success (dưới limit)
 
 ---
 
@@ -626,7 +718,20 @@ if (pm.response.code === 201) {
 
 ---
 
-#### 6. "Relationship not found"
+#### 6. "Maximum relationship limit reached (50 relationships)"
+**Nguyên nhân:** 
+- User đã đạt limit 50 ACCEPTED relationships
+- Đang cố gắng accept thêm relationship
+
+**Giải pháp:**
+- Kiểm tra `status.meta.currentCount` để xem số lượng hiện tại
+- Kiểm tra `status.meta.reason` để biết user nào đạt limit (SOURCE_LIMIT hoặc TARGET_LIMIT)
+- User cần delete một số relationships trước khi accept thêm
+- Lưu ý: Limit chỉ áp dụng cho ACCEPTED relationships, không áp dụng cho PENDING
+
+---
+
+#### 7. "Relationship not found"
 **Nguyên nhân:** 
 - Relationship ID không tồn tại
 - Relationship đã bị xóa
@@ -638,7 +743,7 @@ if (pm.response.code === 201) {
 
 ---
 
-#### 7. "Invalid user id" hoặc "Invalid relationship id"
+#### 8. "Invalid user id" hoặc "Invalid relationship id"
 **Nguyên nhân:** 
 - ID không đúng format ObjectId của MongoDB
 
@@ -648,7 +753,7 @@ if (pm.response.code === 201) {
 
 ---
 
-#### 8. Connection Error
+#### 9. Connection Error
 **Nguyên nhân:** 
 - Server chưa chạy
 - Base URL sai
@@ -664,12 +769,15 @@ if (pm.response.code === 201) {
 ### Tips
 
 1. **Sử dụng Environment Variables:** Luôn sử dụng `{{variable_name}}` thay vì hardcode values
-2. **Lưu Relationship ID:** Sử dụng Postman Tests script để tự động lưu `relationship_id` sau khi create
+2. **Lưu Relationship ID:** Sử dụng Postman Tests script để tự động lưu `relationship_id` sau khi create (từ `response.data.id`)
 3. **Test với 2 Users:** Cần ít nhất 2 user accounts để test đầy đủ flow (user 1 gửi lời mời, user 2 accept)
 4. **Test Flow:** Chạy các test cases theo thứ tự logic (create → get → update → delete)
 5. **Clean Up:** Sau khi test xong, có thể delete relationships để cleanup
 6. **Multiple Status:** Test với các status khác nhau (pending, accepted, blocked)
 7. **Permission Tests:** Luôn test với user không có quyền để đảm bảo security
+8. **Response Format:** Tất cả responses đều có format `{ status: { code, message, meta? }, data: ... }`
+9. **Relationship Limit:** Test limit 50 ACCEPTED relationships - chỉ check khi accept, không check khi create PENDING
+10. **Error Meta:** Khi gặp error 422 (limit exceeded), check `status.meta` để biết chi tiết (reason, limit, currentCount)
 
 ---
 
