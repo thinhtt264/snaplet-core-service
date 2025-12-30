@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: snaplet-core-service
+    env_file: .env
+    ports:
+      - "${PORT:-4040}:4040"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - snaplet-network
+    environment:
+      # Override Redis config for Docker network (use service name and internal port)
+      - REDIS_HOST=${REDIS_DOCKER_HOST:-redis}
+      - REDIS_PORT=${REDIS_DOCKER_PORT:-6379}
+
+  redis:
+    image: redis:7-alpine
+    container_name: snaplet-redis
+    # Expose port ra ngoài để app local có thể kết nối
+    # Format: "host_port:container_port" - Redis container luôn chạy trên port 6379
+    ports:
+      - "${REDIS_EXTERNAL_PORT:-6380}:6379"
+    restart: unless-stopped
+    networks:
+      - snaplet-network
+    command: redis-server --appendonly yes
+    volumes:
+      # Persist Redis data trong Docker volume
+      - redis-data:/data
+
+networks:
+  snaplet-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
+
