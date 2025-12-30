@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Param,
-  NotFoundException,
-} from '@nestjs/common';
+import { Controller, Get, Query, Param } from '@nestjs/common';
 import { UserValidationService } from '../services/user-validation.service';
 import { UserService } from '../services/user.service';
 import { CheckEmailDto } from '../dto/check-email.dto';
@@ -32,10 +26,6 @@ export class UsersController {
   @Get('profile/:username')
   async getUserProfile(@Param('username') username: string) {
     const userInfo = await this.userService.getUserProfileByUsername(username);
-
-    if (!userInfo) {
-      throw new NotFoundException(`User not found`);
-    }
 
     return userInfo;
   }

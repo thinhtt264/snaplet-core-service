@@ -21,11 +21,26 @@ export default () => ({
   },
 
   throttle: {
-    ttl: parseInt(process.env.THROTTLE_TTL || '60', 10),
-    limit: parseInt(process.env.THROTTLE_LIMIT || '10', 10),
+    ttl: parseInt(process.env.THROTTLE_TTL || '90', 10),
+    limit: parseInt(process.env.THROTTLE_LIMIT || '5', 10),
   },
 
   logging: {
     level: process.env.LOG_LEVEL || 'debug',
+  },
+
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: parseInt(process.env.REDIS_DB || '0', 10),
+    cacheVersion: process.env.REDIS_CACHE_VERSION || 'v1',
+  },
+
+  auth: {
+    deviceRegistrationLimit: {
+      enabled: process.env.DEVICE_REGISTRATION_LIMIT_ENABLED !== 'false', // default: true
+      ttlHours: parseInt(process.env.DEVICE_REGISTRATION_TTL_HOURS || '24', 10), // default: 24h
+    },
   },
 });

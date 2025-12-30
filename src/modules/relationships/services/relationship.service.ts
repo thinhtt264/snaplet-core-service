@@ -5,6 +5,7 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { RelationshipRepository } from '../repositories/relationship.repository';
@@ -18,11 +19,13 @@ import {
   RelationshipLimitReason,
 } from '@common/constants';
 import { throwRelationshipLimitExceeded } from '@common/utils/common.utils';
+import { UserService } from '@modules/users/services/user.service';
 
 @Injectable()
 export class RelationshipService {
   constructor(
     private readonly relationshipRepository: RelationshipRepository,
+    private readonly userService: UserService,
   ) {}
 
   /**
@@ -93,44 +96,41 @@ export class RelationshipService {
     initiatorId: string,
     targetUserId: string,
   ): Promise<RelationshipResponse> {
-    // Input validation
-    if (initiatorId === targetUserId) {
-      throw new ConflictException('Cannot create relationship with yourself');
-    }
+    try {
+      if (initiatorId === targetUserId) {
+        throw new ConflictException('Cannot create relationship with yourself');
+      }
 
-    if (!Types.ObjectId.isValid(targetUserId)) {
-      throw new BadRequestException('Invalid user id');
-    }
+      const userExists = await this.userService.checkUserExists(targetUserId);
+      if (!userExists) {
+        throw new BadRequestException('User id not found');
+      }
 
-    const initiatorObjectId = new Types.ObjectId(initiatorId);
-    const targetUserObjectId = new Types.ObjectId(targetUserId);
+      const initiatorObjectId = new Types.ObjectId(initiatorId);
+      const targetUserObjectId = new Types.ObjectId(targetUserId);
 
-    // Business validation: Check if relationship already exists
-    const existingRelationship =
-      await this.relationshipRepository.findExistingRelationship(
+      const relationship = await this.relationshipRepository.createRelationship(
         initiatorObjectId,
         targetUserObjectId,
       );
 
-    if (existingRelationship) {
-      throw new ConflictException('Relationship already exists');
+      return {
+        id: relationship._id.toString(),
+        user1Id: relationship.user1Id.toString(),
+        user2Id: relationship.user2Id.toString(),
+        status: relationship.status,
+        initiator: relationship.initiator.toString(),
+        createdAt: relationship.createdAt,
+        updatedAt: relationship.updatedAt,
+      };
+    } catch (error) {
+      Logger.error(error.message || '');
+      // Re-throw BadRequestException if it's from checkTargetUserExists
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new ConflictException('Create relationship failed');
     }
-
-    // Create relationship (no limit validation for PENDING)
-    const relationship = await this.relationshipRepository.createRelationship(
-      initiatorObjectId,
-      targetUserObjectId,
-    );
-
-    return {
-      id: relationship._id.toString(),
-      user1Id: relationship.user1Id.toString(),
-      user2Id: relationship.user2Id.toString(),
-      status: relationship.status,
-      initiator: relationship.initiator.toString(),
-      createdAt: relationship.createdAt,
-      updatedAt: relationship.updatedAt,
-    };
   }
 
   async update(

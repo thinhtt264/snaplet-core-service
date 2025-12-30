@@ -7,6 +7,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -14,13 +15,16 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RefreshTokenResponse } from './interfaces/auth-response.interface';
 import { AccessToken, DeviceId } from '@common/decorators/header.decorator';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+import { DeviceDailyLimitGuard } from '@common/guards/device-daily-limit.guard';
 import { CurrentUserId } from '@common/decorators/current-user.decorator';
 
 @Controller('auth')
+@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @UseGuards(DeviceDailyLimitGuard)
   @HttpCode(HttpStatus.CREATED)
   async register(
     @Body() registerDto: RegisterDto,

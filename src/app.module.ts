@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import configuration from '@config/configuration';
 import { DatabaseModule } from '@database/database.module';
 import { CommonJwtModule } from '@common/jwt/jwt.module';
+import { RedisModule } from '@common/redis/redis.module';
 import { HealthModule } from '@modules/health/health.module';
 import { PostsModule } from '@modules/posts/posts.module';
 import { RelationshipsModule } from '@modules/relationships/relationships.module';
@@ -20,7 +22,21 @@ import { LoggingInterceptor } from '@common/interceptors/logging.interceptor';
       load: [configuration],
       envFilePath: '.env',
     }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: (configService.get<number>('throttle.ttl') || 90) * 1000, // Convert to milliseconds
+            limit: configService.get<number>('throttle.limit') || 5,
+          },
+        ],
+        errorMessage: 'Too Many Requests',
+      }),
+    }),
     DatabaseModule,
+    RedisModule,
     CommonJwtModule,
     AuthModule,
     HealthModule,

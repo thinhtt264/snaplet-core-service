@@ -24,3 +24,5 @@ export enum RelationshipLimitReason {
 export const MAX_RELATIONSHIPS_PER_USER = 50;
 export const DEFAULT_PAGE_SIZE = 10;
 export const MAX_PAGE_SIZE = 100;
+
+export * from './redis-keys.constants';
