@@ -14,10 +14,6 @@ export class UserService {
     private readonly redisService: RedisService,
   ) {}
 
-  async findById(id: string): Promise<User | null> {
-    return this.userRepository.findById(id);
-  }
-
   async checkUserExists(userId: string): Promise<boolean> {
     // Build Redis key for user existence cache
     const redisKey = buildRedisKey(REDIS_KEY_FEATURES.USER_NOT_FOUND, userId);
@@ -29,7 +25,7 @@ export class UserService {
     }
 
     // Cache miss - query database
-    const user = await this.userRepository.findById(userId);
+    const user = await this.userRepository.findActiveById(userId);
 
     if (!user) {
       await this.redisService.set(redisKey, '1', 24 * 60 * 60);
@@ -37,10 +33,6 @@ export class UserService {
     }
 
     return true;
-  }
-
-  async findByUsername(username: string): Promise<User | null> {
-    return this.userRepository.findByUsername(username);
   }
 
   async hashPassword(password: string): Promise<string> {
@@ -69,7 +61,7 @@ export class UserService {
   async getUserProfileByUsername(
     username: string,
   ): Promise<IUserProfileResponse | null> {
-    const user = await this.userRepository.findByUsername(username);
+    const user = await this.userRepository.findActiveByUsername(username);
 
     if (!user) {
       throw new NotFoundException(`User not found`);

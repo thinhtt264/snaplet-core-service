@@ -10,23 +10,37 @@ export class UserRepository implements IUserRepository {
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
-  async findByEmail(email: string): Promise<User | null> {
+  async findActiveByEmail(email: string): Promise<User | null> {
     return this.userModel
-      .findOne({ email: email.toLowerCase().trim(), isDeleted: { $ne: true } })
+      .findOne({ email: email.toLowerCase().trim(), isDeleted: false })
       .exec();
   }
 
-  async findByUsername(username: string): Promise<User | null> {
+  async findActiveByUsername(username: string): Promise<User | null> {
     return this.userModel
       .findOne({
         username: username.toLowerCase().trim(),
-        isDeleted: { $ne: true },
+        isDeleted: false,
       })
       .exec();
   }
 
-  async findById(id: string): Promise<User | null> {
-    return this.userModel.findOne({ _id: id, isDeleted: { $ne: true } }).exec();
+  async findActiveById(id: string): Promise<User | null> {
+    return this.userModel.findOne({ _id: id, isDeleted: false }).exec();
+  }
+
+  async checkEmailExists(email: string): Promise<boolean> {
+    const user = await this.userModel
+      .findOne({ email: email.toLowerCase().trim() })
+      .exec();
+    return !!user;
+  }
+
+  async checkUsernameExists(username: string): Promise<boolean> {
+    const user = await this.userModel
+      .findOne({ username: username.toLowerCase().trim() })
+      .exec();
+    return !!user;
   }
 
   async create(userData: Partial<User>): Promise<User> {

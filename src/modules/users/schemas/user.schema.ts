@@ -1,5 +1,5 @@
+import { AbstractDocument } from '@database/abstract.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { AbstractDocument } from '../../../database/abstract.schema';
 
 @Schema({ collection: 'users', timestamps: true })
 export class User extends AbstractDocument {
@@ -38,3 +38,19 @@ export class User extends AbstractDocument {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.index(
+  { email: 1 },
+  {
+    partialFilterExpression: { isDeleted: false },
+    name: 'idx_email_active',
+  },
+);
+
+UserSchema.index(
+  { username: 1 },
+  {
+    partialFilterExpression: { isDeleted: false },
+    name: 'idx_username_active',
+  },
+);

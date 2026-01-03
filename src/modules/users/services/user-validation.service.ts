@@ -7,31 +7,23 @@ import { User } from '../schemas/user.schema';
 export class UserValidationService {
   constructor(private readonly userRepository: UserRepository) {}
 
-  /**
-   * Validate email không trùng lặp
-   */
   async validateEmailUnique(email: string): Promise<void> {
     validateEmailFormat(email);
 
-    const existingUser = await this.userRepository.findByEmail(email);
-    if (existingUser) {
+    const emailExists = await this.userRepository.checkEmailExists(email);
+    if (emailExists) {
       throw new ConflictException('Email already exists');
     }
   }
 
-  /**
-   * Validate username không trùng lặp
-   */
   async validateUsernameUnique(username: string): Promise<void> {
-    const existingUser = await this.userRepository.findByUsername(username);
-    if (existingUser) {
+    const usernameExists =
+      await this.userRepository.checkUsernameExists(username);
+    if (usernameExists) {
       throw new ConflictException('Username already exists');
     }
   }
 
-  /**
-   * Validate cả email và username không trùng lặp
-   */
   async validateUserUnique(email: string, username: string): Promise<void> {
     await Promise.all([
       this.validateEmailUnique(email),
@@ -39,10 +31,6 @@ export class UserValidationService {
     ]);
   }
 
-  /**
-   * Check email có available không (chưa được sử dụng)
-   * Return boolean thay vì throw exception
-   */
   async checkEmailAvailable(email: string): Promise<{ available: boolean }> {
     try {
       await this.validateEmailUnique(email);
@@ -52,10 +40,6 @@ export class UserValidationService {
     }
   }
 
-  /**
-   * Check username có available không (chưa được sử dụng)
-   * Return boolean thay vì throw exception
-   */
   async checkUsernameAvailable(
     username: string,
   ): Promise<{ available: boolean }> {
@@ -68,7 +52,7 @@ export class UserValidationService {
   }
 
   async validateUser(email: string, password: string): Promise<User | null> {
-    const user = await this.userRepository.findByEmail(email);
+    const user = await this.userRepository.findActiveByEmail(email);
     if (!user) {
       return null;
     }
