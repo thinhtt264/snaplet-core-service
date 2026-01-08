@@ -13,7 +13,11 @@ import {
   AuthResponse,
   RefreshTokenResponse,
 } from './interfaces/auth-response.interface';
-import { calculateExpirationDate, buildRedisKey } from '@common/utils';
+import {
+  calculateExpirationDate,
+  buildRedisKey,
+  throwInvalidCredentials,
+} from '@common/utils';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { RefreshToken } from './schemas/refresh-token.schema';
 
@@ -73,7 +77,7 @@ export class AuthService {
     );
 
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throwInvalidCredentials();
     }
 
     const accessToken = this.generateAccessToken(user._id.toString());

@@ -10,9 +10,8 @@ export default () => ({
   },
 
   jwt: {
-    secret: process.env.JWT_SECRET || 'your-secret-key',
+    secret: process.env.JWT_SECRET || '',
     expiresIn: process.env.JWT_EXPIRATION || '5m', // Access token expiration
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'your-refresh-secret',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRATION || '30d', // Refresh token expiration
   },
 

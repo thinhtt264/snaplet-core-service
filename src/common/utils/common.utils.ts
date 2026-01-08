@@ -49,7 +49,7 @@ export function verifyPassword(
 export function throwRelationshipLimitExceeded(
   reason: RelationshipLimitReason,
   currentCount: number,
-) {
+): never {
   throw new AppException(
     HttpStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.RELATIONSHIP_LIMIT_EXCEEDED,
@@ -59,5 +59,13 @@ export function throwRelationshipLimitExceeded(
       limit: MAX_RELATIONSHIPS_PER_USER,
       currentCount,
     },
+  );
+}
+
+export function throwInvalidCredentials(): never {
+  throw new AppException(
+    HttpStatus.UNAUTHORIZED,
+    ErrorCode.INVALID_CREDENTIALS,
+    'Invalid email or password',
   );
 }

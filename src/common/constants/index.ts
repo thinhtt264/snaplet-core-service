@@ -14,6 +14,7 @@ export enum OrderDirection {
 
 export enum ErrorCode {
   RELATIONSHIP_LIMIT_EXCEEDED = 'RELATIONSHIP_LIMIT_EXCEEDED',
+  INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
 }
 
 export enum RelationshipLimitReason {
