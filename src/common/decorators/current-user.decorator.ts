@@ -1,4 +1,5 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { BaseRequest } from '@common/types/request.types';
 
 /**
  * Decorator để extract userId từ request.user
@@ -7,7 +8,7 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
  */
 export const CurrentUserId = createParamDecorator(
   (data: unknown, ctx: ExecutionContext): string => {
-    const request = ctx.switchToHttp().getRequest();
-    return request.user.userId;
+    const request = ctx.switchToHttp().getRequest<BaseRequest>();
+    return request.user!.userId;
   },
 );

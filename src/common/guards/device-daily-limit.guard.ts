@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { REDIS_KEY_FEATURES } from '@common/constants';
 import { buildRedisKey } from '@common/utils';
+import { BaseRequest } from '@common/types/request.types';
 
 @Injectable()
 export class DeviceDailyLimitGuard implements CanActivate {
@@ -39,8 +40,8 @@ export class DeviceDailyLimitGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest();
-    const deviceId = request.headers['x-device-id'];
+    const request = context.switchToHttp().getRequest<BaseRequest>();
+    const deviceId = request.fingerprint?.deviceId;
 
     if (!deviceId) {
       return true;

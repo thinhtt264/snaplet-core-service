@@ -1,20 +1,15 @@
 import {
   createParamDecorator,
   ExecutionContext,
-  BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { BaseRequest } from '@common/types/request.types';
 
 export const DeviceId = createParamDecorator(
   (data: unknown, ctx: ExecutionContext): string => {
-    const request = ctx.switchToHttp().getRequest();
-    const deviceId = request.headers['x-device-id'];
+    const request = ctx.switchToHttp().getRequest<BaseRequest>();
 
-    if (!deviceId || deviceId.trim().length === 0) {
-      throw new BadRequestException('DeviceId is required');
-    }
-
-    return deviceId;
+    return request.fingerprint.deviceId;
   },
 );
 

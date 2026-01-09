@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
+import { APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import configuration from '@config/configuration';
@@ -16,6 +16,7 @@ import { TransformInterceptor } from '@common/interceptors/transform.interceptor
 import { LoggingInterceptor } from '@common/interceptors/logging.interceptor';
 import { HttpExceptionFilter } from '@common/filters/http-exception.filter';
 import { DeviceRegistrationCleanupFilter } from '@common/filters/device-registration-cleanup.filter';
+import { FingerprintGuard } from '@common/guards/fingerprint.guard';
 
 @Module({
   imports: [
@@ -49,6 +50,10 @@ import { DeviceRegistrationCleanupFilter } from '@common/filters/device-registra
   providers: [
     AppService,
     DeviceRegistrationCleanupFilter,
+    {
+      provide: APP_GUARD,
+      useClass: FingerprintGuard,
+    },
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
