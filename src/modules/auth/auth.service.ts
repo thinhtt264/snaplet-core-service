@@ -6,7 +6,6 @@ import * as bcrypt from 'bcrypt';
 import { UserService } from '../users/services/user.service';
 import { UserValidationService } from '../users/services/user-validation.service';
 import { RefreshTokenRepository } from './repositories/refresh-token.repository';
-import { RedisService } from '@common/redis/redis.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import {
@@ -15,10 +14,8 @@ import {
 } from './interfaces/auth-response.interface';
 import {
   calculateExpirationDate,
-  buildRedisKey,
   throwInvalidCredentials,
 } from '@common/utils';
-import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { RefreshToken } from './schemas/refresh-token.schema';
 
 @Injectable()
@@ -29,45 +26,41 @@ export class AuthService {
     private readonly userService: UserService,
     private readonly userValidationService: UserValidationService,
     private readonly refreshTokenRepository: RefreshTokenRepository,
-    private readonly redisService: RedisService,
   ) {}
 
   async register(registerDto: RegisterDto, deviceId: string): Promise<any> {
     // Note: DeviceDailyLimitGuard already set the Redis key atomically
-    // If user creation fails, we need to delete the key to allow retry
-    try {
-      await this.userValidationService.validateUserUnique(
-        registerDto.email,
-        registerDto.username,
-      );
-      const user = await this.userService.createUser({
-        email: registerDto.email,
-        username: registerDto.username,
-        firstName: registerDto.firstName,
-        lastName: registerDto.lastName,
-        password: registerDto.password,
-      });
-      const accessToken = this.generateAccessToken(user._id.toString());
-      const refreshToken = this.createRefreshToken();
-      await this.saveRefreshToken(user._id.toString(), deviceId, refreshToken);
-      return {
-        token: {
-          accessToken,
-          refreshToken,
-        },
-        user: {
-          id: user._id.toString(),
-          email: user.email,
-          username: user.username,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          avatarUrl: user.avatarUrl,
-        },
-      };
-    } catch (error) {
-      await this.clearDeviceRegistration(deviceId);
-      throw error;
-    }
+    // If user creation fails, DeviceRegistrationCleanupFilter will clear the key
+    await this.userValidationService.validateUserUnique(
+      registerDto.email,
+      registerDto.username,
+    );
+    const user = await this.userService.createUser({
+      email: registerDto.email,
+      username: registerDto.username,
+      firstName: registerDto.firstName,
+      lastName: registerDto.lastName,
+      password: registerDto.password,
+    });
+
+    const accessToken = this.generateAccessToken(user._id.toString());
+    const refreshToken = this.createRefreshToken();
+    await this.saveRefreshToken(user._id.toString(), deviceId, refreshToken);
+
+    return {
+      token: {
+        accessToken,
+        refreshToken,
+      },
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        avatarUrl: user.avatarUrl,
+      },
+    };
   }
 
   async login(loginDto: LoginDto, deviceId: string): Promise<AuthResponse> {
@@ -216,12 +209,5 @@ export class AuthService {
 
   decodeToken(token: string): any {
     return this.jwtService.decode(token);
-  }
-
-  private async clearDeviceRegistration(deviceId: string): Promise<void> {
-    const baseKey = buildRedisKey(REDIS_KEY_FEATURES.DEVICE_REGISTRATION);
-    const redisKey = `${baseKey}:${deviceId}`;
-
-    await this.redisService.del(redisKey);
   }
 }

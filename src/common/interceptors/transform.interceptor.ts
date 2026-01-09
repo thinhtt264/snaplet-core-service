@@ -9,16 +9,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { ApiResponse } from '@common/types/api-response.types';
 
-export interface ResponseStatus {
-  code: number;
-  message: string;
-}
-
-export interface StandardResponse<T> {
-  status: ResponseStatus;
-  data: T;
-}
+export type StandardResponse<T> = ApiResponse<T>;
 
 @Injectable()
 export class TransformInterceptor<T> implements NestInterceptor<

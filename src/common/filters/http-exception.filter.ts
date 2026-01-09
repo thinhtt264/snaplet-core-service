@@ -6,28 +6,21 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { AppException } from '@common/exception/AppException';
-
-/**
- * Interface định nghĩa cấu trúc response chuẩn của API
- */
-export interface ApiResponse<T = any> {
-  status: {
-    code: number;
-    message: string;
-    meta?: {
-      errorCode?: string;
-      message?: string;
-      [key: string]: any;
-    };
-  };
-  data: T | null;
-}
+import { ApiResponse } from '@common/types/api-response.types';
+import { DeviceRegistrationCleanupFilter } from './device-registration-cleanup.filter';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
-  catch(exception: unknown, host: ArgumentsHost): void {
+  constructor(
+    private readonly deviceRegistrationCleanupFilter: DeviceRegistrationCleanupFilter,
+  ) {}
+
+  async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse();
+
+    // Clear Redis key for device registration if register endpoint fails
+    await this.deviceRegistrationCleanupFilter.catch(exception, host);
 
     const status =
       exception instanceof HttpException

@@ -39,7 +39,7 @@ export default () => ({
   auth: {
     deviceRegistrationLimit: {
       enabled: process.env.DEVICE_REGISTRATION_LIMIT_ENABLED !== 'false', // default: true
-      ttlHours: parseInt(process.env.DEVICE_REGISTRATION_TTL_HOURS || '24', 10), // default: 24h
+      ttlHours: parseFloat(process.env.DEVICE_REGISTRATION_TTL_HOURS || '24'), // default: 24h (supports decimal values like 0.1)
     },
   },
 });
