@@ -1,7 +1,8 @@
-import { IsEmail, IsNotEmpty } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
+import { IsValidEmail } from '@common/validators';
 
 export class CheckEmailDto {
-  @IsEmail({}, { message: 'Email must be a valid email address' })
+  @IsValidEmail({ message: 'Invalid email address' })
   @IsNotEmpty({ message: 'Email is required' })
   email: string;
 }

@@ -1,6 +1,6 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { UserRepository } from '../repositories/user.repository';
-import { validateEmailFormat, verifyPassword } from '@common/utils';
+import { verifyPassword } from '@common/utils';
 import { User } from '../schemas/user.schema';
 
 @Injectable()
@@ -8,8 +8,6 @@ export class UserValidationService {
   constructor(private readonly userRepository: UserRepository) {}
 
   async validateEmailUnique(email: string): Promise<void> {
-    validateEmailFormat(email);
-
     const emailExists = await this.userRepository.checkEmailExists(email);
     if (emailExists) {
       throw new ConflictException('Email already exists');

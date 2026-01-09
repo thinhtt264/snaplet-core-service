@@ -1,7 +1,10 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
+import { IsValidUserName } from '@common/validators';
 
 export class CheckUsernameDto {
-  @IsString({ message: 'Username must be a string' })
+  @IsValidUserName({
+    message: 'Username must contain only letters, numbers, and underscores',
+  })
   @IsNotEmpty({ message: 'Username is required' })
   username: string;
 }

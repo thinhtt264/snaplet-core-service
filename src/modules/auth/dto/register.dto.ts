@@ -1,11 +1,14 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsValidEmail, IsValidUserName } from '@common/validators';
+import { IsNotEmpty, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
-  @IsEmail({}, { message: 'Email must be a valid email address' })
+  @IsValidEmail({ message: 'Invalid email address' })
   @IsNotEmpty({ message: 'Email is required' })
   email: string;
 
-  @IsString({ message: 'Username must be a string' })
+  @IsValidUserName({
+    message: 'Username must contain only letters, numbers, and underscores',
+  })
   @IsNotEmpty({ message: 'Username is required' })
   username: string;
 
