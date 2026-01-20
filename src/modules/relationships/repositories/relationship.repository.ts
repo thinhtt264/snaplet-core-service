@@ -33,7 +33,6 @@ export class RelationshipRepository implements IRelationshipRepository {
           },
         },
         {
-          // Xác định friendId (user còn lại không phải userId)
           $addFields: {
             friendId: {
               $cond: {
@@ -45,7 +44,6 @@ export class RelationshipRepository implements IRelationshipRepository {
           },
         },
         {
-          // Join với users collection
           $lookup: {
             from: 'users',
             localField: 'friendId',
@@ -56,29 +54,53 @@ export class RelationshipRepository implements IRelationshipRepository {
         {
           $unwind: {
             path: '$friend',
-            preserveNullAndEmptyArrays: false, // Bỏ qua nếu user không tồn tại
+            preserveNullAndEmptyArrays: false,
           },
         },
         {
           $project: {
-            _id: 0, // Exclude _id field (redundant with relationshipId)
-            userId: { $toString: '$friendId' }, // ID của người bạn
+            _id: 0,
+            userId: { $toString: '$friendId' },
             username: { $ifNull: ['$friend.username', ''] },
             firstName: { $ifNull: ['$friend.firstName', ''] },
             lastName: { $ifNull: ['$friend.lastName', ''] },
             avatarUrl: { $ifNull: ['$friend.avatarUrl', ''] },
-            relationshipId: { $toString: '$_id' }, // ID của relationship
+            relationshipId: { $toString: '$_id' },
             createdAt: 1,
             status: 1,
           },
         },
         {
-          $sort: { createdAt: -1 }, // Sort by khi kết bạn, mới nhất trước
+          $sort: { createdAt: -1 },
         },
       ])
       .exec();
 
     return results;
+  }
+
+  async findMyFriendIds(userId: Types.ObjectId): Promise<Types.ObjectId[]> {
+    const results = await this.relationshipModel
+      .aggregate([
+        {
+          $match: {
+            $or: [
+              { user1Id: userId, status: RelationshipStatus.ACCEPTED },
+              { user2Id: userId, status: RelationshipStatus.ACCEPTED },
+            ],
+          },
+        },
+        {
+          $project: {
+            friendId: {
+              $cond: [{ $eq: ['$user1Id', userId] }, '$user2Id', '$user1Id'],
+            },
+          },
+        },
+      ])
+      .exec();
+
+    return results.map((result) => result.friendId as Types.ObjectId);
   }
 
   /**
