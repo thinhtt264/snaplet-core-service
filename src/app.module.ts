@@ -2,11 +2,14 @@ import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import configuration from '@config/configuration';
 import { DatabaseModule } from '@database/database.module';
 import { CommonJwtModule } from '@common/jwt/jwt.module';
 import { RedisModule } from '@common/redis/redis.module';
+import { CacheModule } from '@modules/cache/cache.module';
 import { HealthModule } from '@modules/health/health.module';
+import { MediaModule } from '@modules/media/media.module';
 import { PostsModule } from '@modules/posts/posts.module';
 import { RelationshipsModule } from '@modules/relationships/relationships.module';
 import { AuthModule } from '@modules/auth/auth.module';
@@ -25,6 +28,7 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
       load: [configuration],
       envFilePath: '.env',
     }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -40,9 +44,11 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
     }),
     DatabaseModule,
     RedisModule,
+    CacheModule,
     CommonJwtModule,
     AuthModule,
     HealthModule,
+    MediaModule,
     PostsModule,
     RelationshipsModule,
   ],

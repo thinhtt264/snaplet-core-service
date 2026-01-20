@@ -42,4 +42,21 @@ export default () => ({
       ttlHours: parseFloat(process.env.DEVICE_REGISTRATION_TTL_HOURS || '24'), // default: 24h (supports decimal values like 0.1)
     },
   },
+
+  media: {
+    cleanup: {
+      olderThanHours: parseFloat(
+        process.env.MEDIA_CLEANUP_OLDER_THAN_HOURS || '24',
+      ), // default: 24h (1 day)
+    },
+  },
+
+  relationships: {
+    cache: {
+      ttlSeconds: parseInt(
+        process.env.RELATIONSHIPS_CACHE_TTL_SECONDS || '300',
+        10,
+      ), // default: 5 minutes
+    },
+  },
 });

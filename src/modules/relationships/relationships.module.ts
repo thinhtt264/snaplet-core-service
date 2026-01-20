@@ -8,6 +8,7 @@ import { RelationshipController } from './controllers/relationship.controller';
 import { RelationshipService } from './services/relationship.service';
 import { RelationshipRepository } from './repositories/relationship.repository';
 import { UsersModule } from '@modules/users/users.module';
+import { CacheModule } from '@modules/cache/cache.module';
 
 @Module({
   imports: [
@@ -15,8 +16,10 @@ import { UsersModule } from '@modules/users/users.module';
       { name: Relationship.name, schema: RelationshipSchema },
     ]),
     UsersModule,
+    CacheModule,
   ],
   controllers: [RelationshipController],
   providers: [RelationshipService, RelationshipRepository],
+  exports: [RelationshipService],
 })
 export class RelationshipsModule {}

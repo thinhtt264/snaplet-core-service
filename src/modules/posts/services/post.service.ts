@@ -1,60 +1,68 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { PostRepository } from '../repositories/post.repository';
 import {
   GetPostsResponse,
   PostResponse,
 } from '../interfaces/post-response.interface';
+import { PostVisibility } from '../schemas/post.schema';
+import { parseCursor, encodeCursor } from '../types/feed-cursor.types';
+import { PostRepository } from '../repositories/post.repository';
+import { MediaService } from '@modules/media/services/media.service';
+import { RelationshipService } from '@modules/relationships/services/relationship.service';
 
 @Injectable()
 export class PostService {
-  constructor(private readonly postRepository: PostRepository) {}
+  constructor(
+    private readonly postRepository: PostRepository,
+    private readonly mediaService: MediaService,
+    private readonly relationshipService: RelationshipService,
+  ) {}
 
-  /**
-   * Business logic: Lấy posts feed
-   *
-   * - includeOwnPosts = false: Chỉ lấy posts của friends
-   * - includeOwnPosts = true: Lấy posts của friends + own posts
-   *
-   * Tận dụng 100% index { userId: 1, createdAt: -1 }
-   * Sort theo createdAt DESC (newest first)
-   */
   async getPostsFeed(
     userId: string,
-    friendIds: string[] = [],
     limit: number = 10,
-    offset: number = 0,
+    cursor?: string,
   ): Promise<GetPostsResponse> {
     try {
       const userObjectId = new Types.ObjectId(userId);
-      const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
 
-      // Build userIds array based on includeOwnPosts flag
-      const userIds = [...friendObjectIds, userObjectId];
+      // Get my accepted friend IDs (lightweight query, optimized for filtering)
+      const acceptedFriendIds =
+        await this.relationshipService.getMyFriendIds(userId);
 
-      // Empty check
+      const friendUserIds = acceptedFriendIds.map(
+        (id) => new Types.ObjectId(id),
+      );
+
+      const userIds = [userObjectId, ...friendUserIds];
+
       if (userIds.length === 0) {
         return {
           data: [],
           pagination: {
-            offset,
             limit,
+            hasNext: false,
           },
         };
       }
 
-      // Query posts với index optimal
-      const posts = await this.postRepository.findPostsWithUserInfo(
+      const parsedCursor = parseCursor(cursor);
+      const result = await this.postRepository.findPostsWithCursor({
         userIds,
         limit,
-        offset,
-      );
+        cursor: parsedCursor,
+      });
+
+      const nextCursor = result.nextCursor
+        ? encodeCursor(result.nextCursor)
+        : undefined;
 
       return {
-        data: this.transformPosts(posts, userId),
+        data: this.transformPosts(result.posts, userId),
         pagination: {
-          offset,
           limit,
+          hasNext: result.hasNext,
+          nextCursor,
         },
       };
     } catch (error) {
@@ -65,6 +73,30 @@ export class PostService {
   }
 
   /**
+   * Create a new post
+   */
+  async createPost(
+    userId: string,
+    mediaIds: string[],
+    caption?: string,
+    visibility?: PostVisibility,
+  ): Promise<{ id: string; createdAt: Date }> {
+    await this.mediaService.assertMediaReadyAndOwned(mediaIds, userId);
+
+    const post = await this.postRepository.create({
+      userId: new Types.ObjectId(userId),
+      mediaIds: mediaIds.map((id) => new Types.ObjectId(id)),
+      caption: caption ?? '',
+      visibility: visibility ?? PostVisibility.FRIEND_ONLY,
+    });
+
+    return {
+      id: post._id.toString(),
+      createdAt: post.createdAt,
+    };
+  }
+
+  /**
    * Transform raw data to response
    */
   private transformPosts(posts: any[], userId: string): PostResponse[] {
@@ -72,9 +104,18 @@ export class PostService {
       id: post._id.toString(),
       userId: post.userId.toString(),
       username: post.user?.username || '',
-      displayName: post.user?.displayName || '',
+      firstName: post.user?.firstName || '',
+      lastName: post.user?.lastName || '',
       avatarUrl: post.user?.avatarUrl || '',
-      imageUrl: post.imageUrl,
+      media: (post.media || []).map((m: any) => ({
+        id: m._id.toString(),
+        type: m.type,
+        originalUrl: m.originalUrl,
+        thumbnailUrl: m.thumbnailUrl,
+        width: m.width,
+        height: m.height,
+        duration: m.duration,
+      })),
       caption: post.caption,
       visibility: post.visibility,
       createdAt: post.createdAt,

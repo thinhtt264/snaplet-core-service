@@ -5,9 +5,9 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
-  Logger,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
 import { RelationshipRepository } from '../repositories/relationship.repository';
 import { RelationshipStatus } from '../schemas/relationship.schema';
 import {
@@ -20,13 +20,43 @@ import {
 } from '@common/constants';
 import { throwRelationshipLimitExceeded } from '@common/utils/common.utils';
 import { UserService } from '@modules/users/services/user.service';
+import { CacheService } from '@modules/cache/cache.service';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 
 @Injectable()
 export class RelationshipService {
+  private readonly cacheTtlSeconds: number;
+
   constructor(
     private readonly relationshipRepository: RelationshipRepository,
     private readonly userService: UserService,
-  ) {}
+    private readonly cacheService: CacheService,
+    private readonly configService: ConfigService,
+  ) {
+    this.cacheTtlSeconds = this.configService.get<number>(
+      'relationships.cache.ttlSeconds',
+      300, // default: 5 minutes
+    );
+  }
+
+  /**
+   * Build cache key suffix for relationships by status
+   * Format: userId:status
+   */
+  private buildRelationshipCacheKeySuffix(
+    userId: string,
+    status: RelationshipStatus,
+  ): string {
+    return `${userId}:${status}`;
+  }
+
+  /**
+   * Build cache key suffix for my friend IDs
+   * Format: userId
+   */
+  private buildMyFriendIdsCacheKeySuffix(userId: string): string {
+    return userId;
+  }
 
   /**
    * Validate relationship limit for both users
@@ -67,29 +97,65 @@ export class RelationshipService {
     userId: string,
     status: RelationshipStatus,
   ): Promise<RelationshipWithOtherUserResponse[]> {
-    try {
-      const userObjectId = new Types.ObjectId(userId);
+    const keySuffix = this.buildRelationshipCacheKeySuffix(userId, status);
 
-      const relationships =
-        await this.relationshipRepository.findRelationshipsByStatus(
-          userObjectId,
-          status,
-        );
-      return relationships.map((relationship) => ({
-        id: relationship.relationshipId, // ID của relationship document
-        userId: relationship.userId, // ID của friend user
-        username: relationship.username,
-        firstName: relationship.firstName,
-        lastName: relationship.lastName,
-        avatarUrl: relationship.avatarUrl,
-        createdAt: relationship.createdAt,
-        status: relationship.status,
-      }));
-    } catch (error) {
-      throw new InternalServerErrorException(
-        error.message || 'Failed to fetch relationships',
-      );
-    }
+    return this.cacheService.getOrCompute(
+      REDIS_KEY_FEATURES.RELATIONSHIPS,
+      keySuffix,
+      async () => {
+        try {
+          const userObjectId = new Types.ObjectId(userId);
+
+          const relationships =
+            await this.relationshipRepository.findRelationshipsByStatus(
+              userObjectId,
+              status,
+            );
+          return relationships.map((relationship) => ({
+            id: relationship.relationshipId, // ID của relationship document
+            userId: relationship.userId, // ID của friend user
+            username: relationship.username,
+            firstName: relationship.firstName,
+            lastName: relationship.lastName,
+            avatarUrl: relationship.avatarUrl,
+            createdAt: relationship.createdAt,
+            status: relationship.status,
+          }));
+        } catch (error) {
+          throw new InternalServerErrorException(
+            error.message || 'Failed to fetch relationships',
+          );
+        }
+      },
+      this.cacheTtlSeconds,
+    );
+  }
+
+  async getMyFriendIds(userId: string): Promise<string[]> {
+    const keySuffix = this.buildMyFriendIdsCacheKeySuffix(userId);
+
+    return this.cacheService.getOrCompute(
+      REDIS_KEY_FEATURES.MY_FRIEND_IDS,
+      keySuffix,
+      async () => {
+        const userObjectId = new Types.ObjectId(userId);
+        const friendIds =
+          await this.relationshipRepository.findMyFriendIds(userObjectId);
+        return friendIds.map((id) => id.toString());
+      },
+      this.cacheTtlSeconds,
+    );
+  }
+
+  private async invalidateRelationshipsCache(userId: string): Promise<void> {
+    await this.cacheService.invalidateByFeatureAndUser(
+      REDIS_KEY_FEATURES.RELATIONSHIPS,
+      userId,
+    );
+    await this.cacheService.invalidateByFeatureAndUser(
+      REDIS_KEY_FEATURES.MY_FRIEND_IDS,
+      userId,
+    );
   }
 
   async create(
@@ -114,6 +180,9 @@ export class RelationshipService {
         targetUserObjectId,
       );
 
+      await this.invalidateRelationshipsCache(relationship.user1Id.toString());
+      await this.invalidateRelationshipsCache(relationship.user2Id.toString());
+
       return {
         id: relationship._id.toString(),
         user1Id: relationship.user1Id.toString(),
@@ -124,7 +193,6 @@ export class RelationshipService {
         updatedAt: relationship.updatedAt,
       };
     } catch (error) {
-      Logger.error(error.message || '');
       // Re-throw BadRequestException if it's from checkTargetUserExists
       if (error instanceof BadRequestException) {
         throw error;
@@ -193,6 +261,13 @@ export class RelationshipService {
         status,
       );
 
+    await this.invalidateRelationshipsCache(
+      updatedRelationship.user1Id.toString(),
+    );
+    await this.invalidateRelationshipsCache(
+      updatedRelationship.user2Id.toString(),
+    );
+
     return {
       id: updatedRelationship._id.toString(),
       user1Id: updatedRelationship.user1Id.toString(),
@@ -236,6 +311,9 @@ export class RelationshipService {
         'You do not have permission to delete this relationship',
       );
     }
+
+    await this.invalidateRelationshipsCache(relationship.user1Id.toString());
+    await this.invalidateRelationshipsCache(relationship.user2Id.toString());
 
     // Delete relationship directly from object (optimized - no duplicate query)
     await this.relationshipRepository.deleteRelationship(relationship);

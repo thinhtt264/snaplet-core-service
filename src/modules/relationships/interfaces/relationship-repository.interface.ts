@@ -30,6 +30,14 @@ export interface IRelationshipRepository {
   ): Promise<RelationshipAggregateResult[]>;
 
   /**
+   * Find my friend IDs (accepted relationships only)
+   * Lightweight query optimized for filtering posts - no user details, just IDs
+   * @param userId - Current user's ID
+   * @returns Array of accepted friend user ObjectIds
+   */
+  findMyFriendIds(userId: Types.ObjectId): Promise<Types.ObjectId[]>;
+
+  /**
    * Find existing relationship between two users
    * @param user1Id - First user ID
    * @param user2Id - Second user ID

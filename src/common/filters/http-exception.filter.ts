@@ -45,28 +45,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === 'string') {
         errorMessage = exceptionResponse;
-        metaData = {
-          message: exceptionResponse,
-        };
       } else {
         // Xử lý object response từ NestJS exceptions
         const responseObj = exceptionResponse as any;
         errorMessage = responseObj?.message || exception.message;
-
-        // Nếu response có structure phức tạp, merge vào meta
-        metaData = {
-          message: errorMessage,
-          ...(responseObj?.error ? { error: responseObj.error } : {}),
-          ...(responseObj?.meta ? { ...responseObj.meta } : {}),
-        };
       }
     }
     // Xử lý các exception không phải HttpException
     else {
       errorMessage = 'Internal server error';
-      metaData = {
-        message: errorMessage,
-      };
     }
 
     const apiResponse: ApiResponse = {
