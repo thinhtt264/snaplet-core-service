@@ -18,7 +18,8 @@
       "@common/*": ["src/common/*"],
       "@config/*": ["src/config/*"],
       "@database/*": ["src/database/*"],
-      "@modules/*": ["src/modules/*"]
+      "@modules/*": ["src/modules/*"],
+      "@infrastructure/*": ["src/infrastructure/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

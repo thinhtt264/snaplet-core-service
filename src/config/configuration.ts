@@ -59,4 +59,16 @@ export default () => ({
       ), // default: 5 minutes
     },
   },
+
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID || '',
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+    bucket: process.env.R2_BUCKET || '',
+    publicUrl: process.env.R2_PUBLIC_URL || '',
+    presignedUrlExpiresIn: parseInt(
+      process.env.R2_PRESIGNED_URL_EXPIRES_IN || '900',
+      10,
+    ), // default: 15 minutes (900 seconds)
+  },
 });

@@ -1,24 +1,16 @@
-import { IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+} from 'class-validator';
 
 export class ConfirmUploadDto {
   @IsNotEmpty()
-  @IsString()
-  mediaId: string;
-
-  @IsNotEmpty()
-  @IsUrl()
-  originalUrl: string;
-
-  @IsOptional()
-  @IsUrl()
-  thumbnailUrl?: string;
-
-  @IsOptional()
-  width?: number;
-
-  @IsOptional()
-  height?: number;
-
-  @IsOptional()
-  duration?: number;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  mediaIds: string[];
 }

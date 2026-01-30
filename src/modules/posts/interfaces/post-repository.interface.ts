@@ -1,6 +1,50 @@
 import { Types } from 'mongoose';
 import { Post } from '../schemas/post.schema';
 import { FeedCursor } from '../types/feed-cursor.types';
+import { ImageMimeType } from '@common/types/mime-type.types';
+import { ImageTransform } from '@common/types';
+import { MediaStatus } from '@modules/media/schemas/media.schema';
+
+/**
+ * Raw media data from aggregation pipeline
+ * Matches the $project stage in post.repository.ts
+ */
+export interface RawMediaFromAggregation {
+  _id: Types.ObjectId;
+  ownerId: Types.ObjectId;
+  mimeType: ImageMimeType;
+  mediaKey?: string;
+  duration?: number;
+  transform: ImageTransform;
+  status: MediaStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Raw user data from aggregation pipeline
+ * Matches the $project stage in post.repository.ts
+ */
+export interface RawUserFromAggregation {
+  username: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string;
+}
+
+/**
+ * Raw post data from aggregation pipeline
+ * Matches the final $project stage in post.repository.ts
+ */
+export interface RawPostFromAggregation {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  caption: string;
+  visibility: string;
+  createdAt: Date;
+  user: RawUserFromAggregation;
+  media: RawMediaFromAggregation[];
+}
 
 export interface FindPostsWithCursorParams {
   userIds: Types.ObjectId[];
@@ -9,7 +53,7 @@ export interface FindPostsWithCursorParams {
 }
 
 export interface FindPostsWithCursorResult {
-  posts: any[];
+  posts: RawPostFromAggregation[];
   hasNext: boolean;
   nextCursor: FeedCursor | null;
 }

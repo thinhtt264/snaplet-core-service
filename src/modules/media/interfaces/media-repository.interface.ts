@@ -22,5 +22,8 @@ export interface IMediaRepository {
   countDocuments(filter: any): Promise<number>;
   findOrphanedMedia(olderThanHours: number): Promise<Media[]>;
   deleteMany(ids: Types.ObjectId[]): Promise<number>; // Soft delete (set isDeleted: true)
-  hardDeleteMany(ids: Types.ObjectId[]): Promise<number>; // Hard delete (remove from DB)
+  hardDeleteManyIfStatus(
+    ids: Types.ObjectId[],
+    allowedStatuses?: string[],
+  ): Promise<number>;
 }

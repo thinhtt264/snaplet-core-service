@@ -1,18 +1,9 @@
+import { MediaResponse } from '@modules/media/interfaces/media-response.interface';
 import { UserBasicInfoResponse } from '@modules/users/interfaces/user-response.interface';
-
-export interface MediaItem {
-  id: string;
-  type: string;
-  originalUrl: string;
-  thumbnailUrl?: string;
-  width?: number;
-  height?: number;
-  duration?: number;
-}
 
 export interface PostResponse extends UserBasicInfoResponse {
   id: string;
-  media: MediaItem[];
+  media: MediaResponse[];
   caption: string;
   visibility: string;
   createdAt: Date;

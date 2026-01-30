@@ -24,23 +24,15 @@ import {
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
-  /**
-   * Step 1: Request batch upload
-   * POST /media/upload/request
-   */
   @Post('upload/request')
   @HttpCode(HttpStatus.OK)
   async requestBatchUpload(
     @CurrentUserId() userId: string,
     @Body() dto: RequestBatchUploadDto,
   ): Promise<BatchUploadRequestResponse> {
-    return await this.mediaService.requestBatchUpload(userId, dto);
+    return await this.mediaService.requestBatchUpload(userId, dto.items);
   }
 
-  /**
-   * Step 2: Confirm upload
-   * POST /media/upload/confirm
-   */
   @Post('upload/confirm')
   @HttpCode(HttpStatus.OK)
   async confirmUpload(
@@ -50,10 +42,6 @@ export class MediaController {
     return await this.mediaService.confirmUpload(userId, dto);
   }
 
-  /**
-   * Get media by ID
-   * GET /media/:id
-   */
   @Get(':id')
   async getMediaById(@Param('id') mediaId: string): Promise<MediaResponse> {
     return await this.mediaService.getMediaById(mediaId);

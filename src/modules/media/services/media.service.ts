@@ -7,7 +7,7 @@ import {
 import { Types } from 'mongoose';
 import { MediaRepository } from '../repositories/media.repository';
 import { Media, MediaStatus } from '../schemas/media.schema';
-import { RequestBatchUploadDto } from '../dto/request-batch-upload.dto';
+import { MediaUploadItem } from '../dto/request-batch-upload.dto';
 import { ConfirmUploadDto } from '../dto/confirm-upload.dto';
 import {
   MediaResponse,
@@ -15,46 +15,49 @@ import {
   BatchUploadItemResponse,
   ConfirmUploadResponse,
 } from '../interfaces/media-response.interface';
+import { StorageService } from '@infrastructure/storage/storage.service';
+import { IMAGE_V1_FOLDER, MAX_MEDIA_FILE_SIZE } from '@common/constants';
 
 @Injectable()
 export class MediaService {
-  constructor(private readonly mediaRepository: MediaRepository) {}
+  constructor(
+    private readonly mediaRepository: MediaRepository,
+    private readonly storageService: StorageService,
+  ) {}
 
-  /**
-   * Step 1: Request batch upload - Create multiple Media with PENDING status
-   * Returns signed URLs for client to upload directly to storage
-   */
   async requestBatchUpload(
     ownerId: string,
-    dto: RequestBatchUploadDto,
+    mediaItems: MediaUploadItem[],
   ): Promise<BatchUploadRequestResponse> {
     try {
       const items: BatchUploadItemResponse[] = [];
 
-      // Create Media documents for each item
-      for (const item of dto.items) {
+      for (const item of mediaItems) {
+        const mediaId = new Types.ObjectId();
+        const mediaKey = `${IMAGE_V1_FOLDER}/${mediaId.toString()}`;
+
         const media = await this.mediaRepository.create({
+          _id: mediaId,
           ownerId: new Types.ObjectId(ownerId),
-          type: item.type,
+          mimeType: item.mimeType,
+          mediaKey,
+          transform: item.transform,
           status: MediaStatus.PENDING,
-          originalUrl: '', // Will be updated after upload
         });
 
-        // TODO: Generate signed URL from storage service (S3, GCS, etc.)
-        // For now, return a placeholder
         const uploadUrl = await this.generateSignedUploadUrl(
-          media._id.toString(),
+          mediaKey,
           item.mimeType,
         );
 
         items.push({
           mediaId: media._id.toString(),
           uploadUrl,
-          expiresIn: 3600, // 1 hour
+          expiresIn: this.storageService.getPresignedUrlExpiresIn(),
         });
       }
 
-      return { items };
+      return { data: items };
     } catch (error) {
       throw new InternalServerErrorException(
         error.message || 'Failed to request batch upload',
@@ -62,56 +65,71 @@ export class MediaService {
     }
   }
 
-  /**
-   * Step 2: Confirm upload - Update Media with URL and trigger processing
-   * Uses atomic update with owner check to prevent race condition and unauthorized access
-   */
   async confirmUpload(
     ownerId: string,
     dto: ConfirmUploadDto,
   ): Promise<ConfirmUploadResponse> {
     try {
-      const mediaId = new Types.ObjectId(dto.mediaId);
       const ownerObjectId = new Types.ObjectId(ownerId);
+      const mediaIds = dto.mediaIds.map((id) => new Types.ObjectId(id));
+      const confirmedMedia: MediaResponse[] = [];
 
-      // Atomic update: Only update if status is PENDING AND ownerId matches
-      // This prevents:
-      // 1. Race condition where multiple requests try to confirm the same media
-      // 2. Unauthorized access where user tries to confirm someone else's media
-      const updatedMedia = await this.mediaRepository.updateStatusIfWithOwner(
-        mediaId,
-        ownerObjectId,
-        MediaStatus.PENDING,
-        MediaStatus.PROCESSING,
-        {
-          originalUrl: dto.originalUrl,
-          thumbnailUrl: dto.thumbnailUrl,
-          width: dto.width,
-          height: dto.height,
-          duration: dto.duration,
-        },
-      );
+      for (const mediaId of mediaIds) {
+        const existingMedia = await this.mediaRepository.findById(mediaId);
+        if (!existingMedia || !existingMedia.mediaKey) {
+          throw new BadRequestException(
+            `Media key not found for mediaId: ${mediaId.toString()}`,
+          );
+        }
 
-      if (!updatedMedia) {
-        throw new BadRequestException(
-          'Media not found, does not belong to user, or is not in PENDING status',
+        const mediaKey = existingMedia.mediaKey;
+
+        const realFileSize =
+          await this.storageService.getRealFileSize(mediaKey);
+        if (realFileSize > MAX_MEDIA_FILE_SIZE) {
+          throw new BadRequestException(
+            `File size (${realFileSize} bytes) exceeds maximum allowed size (${MAX_MEDIA_FILE_SIZE} bytes) for mediaId: ${mediaId.toString()}`,
+          );
+        }
+
+        // Atomic update: Only update if status is PENDING AND ownerId matches
+        // This prevents:
+        // 1. Race condition where multiple requests try to confirm the same media
+        // 2. Unauthorized access where user tries to confirm someone else's media
+        const updatedMedia = await this.mediaRepository.updateStatusIfWithOwner(
+          mediaId,
+          ownerObjectId,
+          MediaStatus.PENDING,
+          MediaStatus.PROCESSING,
+          {
+            mediaKey,
+          },
         );
-      }
 
-      // TODO: Push image/video processing job to queue
-      // In production, this should be handled by a background worker
-      // For development, we'll simulate immediate processing
-      await this.processMedia(updatedMedia._id);
+        if (!updatedMedia) {
+          throw new BadRequestException(
+            `Media not found, does not belong to user, or is not in PENDING status for mediaId: ${mediaId.toString()}`,
+          );
+        }
 
-      // Fetch the updated media after processing
-      const finalMedia = await this.mediaRepository.findById(mediaId);
-      if (!finalMedia) {
-        throw new NotFoundException('Media not found after processing');
+        await this.processMedia(updatedMedia._id);
+
+        const finalMedia = await this.mediaRepository.findById(mediaId);
+        if (!finalMedia) {
+          throw new NotFoundException(
+            `Media not found after processing for mediaId: ${mediaId.toString()}`,
+          );
+        }
+
+        confirmedMedia.push(this.transformMedia(finalMedia));
       }
 
       return {
-        media: this.transformMedia(finalMedia),
-        message: 'Upload confirmed and processing started',
+        media: confirmedMedia,
+        message:
+          confirmedMedia.length === 1
+            ? 'Upload confirmed and processing started'
+            : `${confirmedMedia.length} uploads confirmed and processing started`,
       };
     } catch (error) {
       if (
@@ -139,19 +157,12 @@ export class MediaService {
     return this.transformMedia(media);
   }
 
-  /**
-   * Get media by IDs (for posts)
-   */
   async getMediaByIds(mediaIds: string[]): Promise<MediaResponse[]> {
     const objectIds = mediaIds.map((id) => new Types.ObjectId(id));
     const media = await this.mediaRepository.findByIds(objectIds);
     return media.map((m) => this.transformMedia(m));
   }
 
-  /**
-   * Assert that all media IDs are READY and owned by the user
-   * Throws BadRequestException if validation fails
-   */
   async assertMediaReadyAndOwned(
     mediaIds: string[],
     ownerId: string,
@@ -172,10 +183,6 @@ export class MediaService {
     }
   }
 
-  /**
-   * Validate media IDs are all READY
-   * @deprecated Use assertMediaReadyAndOwned instead
-   */
   async validateMediaReady(mediaIds: string[]): Promise<boolean> {
     const objectIds = mediaIds.map((id) => new Types.ObjectId(id));
     const media = await this.mediaRepository.findByIds(objectIds);
@@ -187,12 +194,6 @@ export class MediaService {
     return media.every((m) => m.status === MediaStatus.READY);
   }
 
-  /**
-   * Process media (resize, thumbnail generation, etc.)
-   * TODO: In production, this should push a job to a queue (Bull, BullMQ, etc.)
-   * and a worker will process it asynchronously
-   * For now, we simulate immediate processing for development
-   */
   private async processMedia(mediaId: Types.ObjectId): Promise<void> {
     // Simulate processing - in production this would be async via queue
     // For development, immediately mark as READY
@@ -205,31 +206,23 @@ export class MediaService {
     );
   }
 
-  /**
-   * Generate signed upload URL
-   * TODO: Integrate with actual storage service (S3, GCS, etc.)
-   */
   private async generateSignedUploadUrl(
-    mediaId: string,
+    key: string,
     mimeType: string,
   ): Promise<string> {
-    // Placeholder - replace with actual storage service integration
-    return `https://storage.example.com/upload/${mediaId}?mimeType=${mimeType}`;
+    return this.storageService.generatePresignedUploadUrl(key, mimeType);
   }
 
-  /**
-   * Transform media to response format
-   */
   private transformMedia(media: Media): MediaResponse {
+    const originalUrl = this.storageService.getPublicUrlFromKey(media.mediaKey);
+
     return {
       id: media._id.toString(),
       ownerId: media.ownerId.toString(),
-      type: media.type,
-      originalUrl: media.originalUrl,
-      thumbnailUrl: media.thumbnailUrl,
-      width: media.width,
-      height: media.height,
+      mimeType: media.mimeType,
+      originalUrl,
       duration: media.duration,
+      transform: media.transform,
       status: media.status,
       createdAt: media.createdAt,
       updatedAt: media.updatedAt,
