@@ -13,24 +13,26 @@ import { RedisService } from './redis.service';
         const logger = new Logger('RedisModule');
         const RETRY_DELAY_MS = 5000; // 5 seconds
 
-        const redisConfig = {
-          host: configService.get<string>('redis.host') || 'localhost',
-          port: configService.get<number>('redis.port') || 6379,
-          password: configService.get<string>('redis.password'),
-          db: configService.get<number>('redis.db') || 0,
+        const commonOptions = {
           retryStrategy: (times: number) => {
             const delay = Math.min(times * 100, RETRY_DELAY_MS);
             return delay;
           },
           maxRetriesPerRequest: null,
           offlineQueue: false,
-          // Enable lazy connect để không block app startup
           lazyConnect: true,
-          // Auto reconnect nhưng không throw error
           enableReadyCheck: false,
         };
 
-        const redis = new Redis(redisConfig);
+        const redisUri = configService.get<string>('redis.uri');
+        const redis = redisUri?.trim().length
+          ? new Redis(redisUri, commonOptions)
+          : new Redis({
+              ...commonOptions,
+              host: configService.get<string>('redis.host') || 'localhost',
+              port: configService.get<number>('redis.port') || 6379,
+              password: configService.get<string>('redis.password'),
+            });
 
         redis.connect().catch((error) => {
           logger.warn(
