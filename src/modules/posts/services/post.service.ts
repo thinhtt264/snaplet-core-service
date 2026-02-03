@@ -42,10 +42,7 @@ export class PostService {
       if (userIds.length === 0) {
         return {
           data: [],
-          pagination: {
-            limit,
-            hasNext: false,
-          },
+          pagination: { limit, nextCursor: null },
         };
       }
 
@@ -58,13 +55,12 @@ export class PostService {
 
       const nextCursor = result.nextCursor
         ? encodeCursor(result.nextCursor)
-        : undefined;
+        : null;
 
       return {
         data: this.transformPosts(result.posts, userId),
         pagination: {
           limit,
-          hasNext: result.hasNext,
           nextCursor,
         },
       };
