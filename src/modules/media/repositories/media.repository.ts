@@ -109,8 +109,6 @@ export class MediaRepository implements IMediaRepository {
       Date.now() - olderThanHours * 60 * 60 * 1000,
     );
 
-    // Find all media IDs that are used in posts
-    // mediaIds is an array field, so we need to unwind and get distinct values
     const usedMediaIdsResult = await this.mediaModel.db
       .collection('posts')
       .aggregate([
@@ -165,12 +163,22 @@ export class MediaRepository implements IMediaRepository {
   }
 
   /**
-   * Hard delete multiple media by IDs (remove from DB completely)
-   * Use this for orphaned media that has no post references
+   * Atomic hard delete: Only delete if status is still PENDING or READY
+   * Prevents race condition where media is being confirmed/processed while cleanup runs
+   * @param ids - Media IDs to delete
+   * @param allowedStatuses - Statuses that are safe to delete (default: ['PENDING', 'READY'])
+   * @returns Number of deleted media items
    */
-  async hardDeleteMany(ids: Types.ObjectId[]): Promise<number> {
+  async hardDeleteManyIfStatus(
+    ids: Types.ObjectId[],
+    allowedStatuses: string[] = ['PENDING', 'READY'],
+  ): Promise<number> {
     const result = await this.mediaModel
-      .deleteMany({ _id: { $in: ids } })
+      .deleteMany({
+        _id: { $in: ids },
+        status: { $in: allowedStatuses },
+        isDeleted: { $ne: true },
+      })
       .exec();
     return result.deletedCount;
   }

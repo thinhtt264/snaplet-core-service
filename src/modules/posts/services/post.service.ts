@@ -4,11 +4,13 @@ import {
   GetPostsResponse,
   PostResponse,
 } from '../interfaces/post-response.interface';
+import { RawPostFromAggregation } from '../interfaces/post-repository.interface';
 import { PostVisibility } from '../schemas/post.schema';
 import { parseCursor, encodeCursor } from '../types/feed-cursor.types';
 import { PostRepository } from '../repositories/post.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
+import { StorageService } from '@infrastructure/storage/storage.service';
 
 @Injectable()
 export class PostService {
@@ -16,6 +18,7 @@ export class PostService {
     private readonly postRepository: PostRepository,
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
+    private readonly storageService: StorageService,
   ) {}
 
   async getPostsFeed(
@@ -39,10 +42,7 @@ export class PostService {
       if (userIds.length === 0) {
         return {
           data: [],
-          pagination: {
-            limit,
-            hasNext: false,
-          },
+          pagination: { limit, nextCursor: null },
         };
       }
 
@@ -55,13 +55,12 @@ export class PostService {
 
       const nextCursor = result.nextCursor
         ? encodeCursor(result.nextCursor)
-        : undefined;
+        : null;
 
       return {
         data: this.transformPosts(result.posts, userId),
         pagination: {
           limit,
-          hasNext: result.hasNext,
           nextCursor,
         },
       };
@@ -97,24 +96,29 @@ export class PostService {
   }
 
   /**
-   * Transform raw data to response
+   * Transform raw aggregation data to response
    */
-  private transformPosts(posts: any[], userId: string): PostResponse[] {
+  private transformPosts(
+    posts: RawPostFromAggregation[],
+    userId: string,
+  ): PostResponse[] {
     return posts.map((post) => ({
       id: post._id.toString(),
       userId: post.userId.toString(),
-      username: post.user?.username || '',
-      firstName: post.user?.firstName || '',
-      lastName: post.user?.lastName || '',
-      avatarUrl: post.user?.avatarUrl || '',
-      media: (post.media || []).map((m: any) => ({
+      username: post.user.username,
+      firstName: post.user.firstName,
+      lastName: post.user.lastName,
+      avatarUrl: post.user.avatarUrl,
+      media: post.media.map((m) => ({
         id: m._id.toString(),
-        type: m.type,
-        originalUrl: m.originalUrl,
-        thumbnailUrl: m.thumbnailUrl,
-        width: m.width,
-        height: m.height,
+        ownerId: m.ownerId.toString(),
+        mimeType: m.mimeType,
+        originalUrl: this.storageService.getPublicUrlFromKey(m.mediaKey),
         duration: m.duration,
+        transform: m.transform,
+        status: m.status,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
       })),
       caption: post.caption,
       visibility: post.visibility,

@@ -27,6 +27,8 @@
     "docker:deploy": "docker compose build app && docker compose up -d app"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.972.0",
+    "@aws-sdk/s3-request-presigner": "^3.972.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -97,7 +99,9 @@
       "^@common/(.*)$": "<rootDir>/../src/common/$1",
       "^@config/(.*)$": "<rootDir>/../src/config/$1",
       "^@database/(.*)$": "<rootDir>/../src/database/$1",
-      "^@modules/(.*)$": "<rootDir>/../src/modules/$1"
+      "^@modules/(.*)$": "<rootDir>/../src/modules/$1",
+      "^@infrastructure/(.*)$": "<rootDir>/../src/infrastructure/$1"
     }
-  }
+  },
+  "packageManager": "pnpm@10.28.1+sha512.7d7dbbca9e99447b7c3bf7a73286afaaf6be99251eb9498baefa7d406892f67b879adb3a1d7e687fc4ccc1a388c7175fbaae567a26ab44d1067b54fcb0d6a316"
 }

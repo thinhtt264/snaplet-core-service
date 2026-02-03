@@ -1,11 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { AbstractDocument } from '../../../database/abstract.schema';
-
-export enum MediaType {
-  IMAGE = 'IMAGE',
-  VIDEO = 'VIDEO',
-}
+import {
+  ALLOWED_IMAGE_MIME_TYPES,
+  type ImageMimeType,
+} from '@common/types/mime-type.types';
+import { ImageTransform } from '@common/types';
 
 export enum MediaStatus {
   PENDING = 'PENDING',
@@ -19,23 +19,17 @@ export class Media extends AbstractDocument {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   ownerId: Types.ObjectId;
 
-  @Prop({ required: true, enum: MediaType })
-  type: MediaType;
-
-  @Prop({ required: true })
-  originalUrl: string;
+  @Prop({ required: true, enum: ALLOWED_IMAGE_MIME_TYPES })
+  mimeType: ImageMimeType;
 
   @Prop()
-  thumbnailUrl?: string;
-
-  @Prop()
-  width?: number;
-
-  @Prop()
-  height?: number;
+  mediaKey?: string;
 
   @Prop()
   duration?: number; // video
+
+  @Prop({ required: true, type: Object })
+  transform: ImageTransform;
 
   @Prop({ required: true, enum: MediaStatus, default: MediaStatus.PENDING })
   status: MediaStatus;

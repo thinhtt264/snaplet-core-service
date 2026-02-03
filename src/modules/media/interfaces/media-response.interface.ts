@@ -1,12 +1,13 @@
+import { ImageMimeType } from '@common/types/mime-type.types';
+import { ImageTransform } from '@common/types';
+
 export interface MediaResponse {
   id: string;
   ownerId: string;
-  type: string;
+  mimeType: ImageMimeType;
   originalUrl: string;
-  thumbnailUrl?: string;
-  width?: number;
-  height?: number;
   duration?: number;
+  transform: ImageTransform;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -19,7 +20,7 @@ export interface UploadRequestResponse {
 }
 
 export interface ConfirmUploadResponse {
-  media: MediaResponse;
+  media: MediaResponse[];
   message: string;
 }
 
@@ -30,5 +31,5 @@ export interface BatchUploadItemResponse {
 }
 
 export interface BatchUploadRequestResponse {
-  items: BatchUploadItemResponse[];
+  data: BatchUploadItemResponse[];
 }
