@@ -1,7 +1,10 @@
 import { ImageMimeType } from '@common/types/mime-type.types';
-import { ImageTransform } from '@common/types';
+import { ImageTransform, ImageUrls } from '@common/types';
 
-export interface MediaResponse {
+/**
+ * Base media info (internal use / upload responses)
+ */
+export interface MediaBaseResponse {
   id: string;
   ownerId: string;
   mimeType: ImageMimeType;
@@ -13,6 +16,13 @@ export interface MediaResponse {
   updatedAt: Date;
 }
 
+/**
+ * Full media response with CDN image URLs (for feed/posts)
+ */
+export interface MediaResponse extends MediaBaseResponse {
+  images: ImageUrls | null;
+}
+
 export interface UploadRequestResponse {
   mediaId: string;
   uploadUrl: string;
@@ -20,7 +30,7 @@ export interface UploadRequestResponse {
 }
 
 export interface ConfirmUploadResponse {
-  media: MediaResponse[];
+  media: MediaBaseResponse[];
   message: string;
 }
 

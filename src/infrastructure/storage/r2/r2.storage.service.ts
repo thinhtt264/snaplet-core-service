@@ -6,6 +6,11 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { R2Client } from './r2.client';
+import {
+  ImageSizeKey,
+  IMAGE_SIZE_CONFIGS,
+  ImageUrls,
+} from '@common/types/image-transform.types';
 
 @Injectable()
 export class R2StorageService {
@@ -36,13 +41,55 @@ export class R2StorageService {
   }
 
   /**
-   * Generate public URL from key
+   * Generate public URL from key (original URL without CDN transformation)
    * Pattern: ${publicUrl}/${key}
    */
   getPublicUrlFromKey(key: string | undefined | null): string {
     if (!key) return '';
     const publicUrl = this.r2Client.getPublicUrl();
     return `${publicUrl}/${key}`;
+  }
+
+  /**
+   * Generate CDN URL with dynamic width and height
+   * Pattern: ${cdnBaseUrl}/cdn-cgi/image/w=${width},h=${height}/${cdnBaseUrl}/${key}
+   */
+  getCdnUrl(key: string, width: number, height: number): string {
+    if (!key) return '';
+    const cdnBaseUrl = this.r2Client.getImageCdnBaseUrl();
+    if (!cdnBaseUrl) {
+      // Fallback to public URL if CDN is not configured
+      return this.getPublicUrlFromKey(key);
+    }
+    return `${cdnBaseUrl}/cdn-cgi/image/w=${width},h=${height}/${cdnBaseUrl}/${key}`;
+  }
+
+  /**
+   * Generate image size URLs for a given key
+   * @param key - Storage key
+   * @param sizes - Optional array of sizes to include. If not provided, returns all sizes.
+   */
+  getImageUrls(
+    key: string | undefined | null,
+    sizes?: ImageSizeKey[],
+  ): ImageUrls | null {
+    if (!key) return null;
+
+    const cdnBaseUrl = this.r2Client.getImageCdnBaseUrl();
+    const sizesToGenerate = sizes ?? Object.values(ImageSizeKey);
+
+    const result: ImageUrls = {};
+
+    for (const size of sizesToGenerate) {
+      const config = IMAGE_SIZE_CONFIGS[size];
+      if (config) {
+        result[size] = cdnBaseUrl
+          ? this.getCdnUrl(key, config.width, config.height)
+          : this.getPublicUrlFromKey(key);
+      }
+    }
+
+    return result;
   }
 
   /**

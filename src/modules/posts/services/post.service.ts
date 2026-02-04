@@ -11,6 +11,7 @@ import { PostRepository } from '../repositories/post.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { StorageService } from '@infrastructure/storage/storage.service';
+import { ImageSizeKey } from '@common/types';
 
 @Injectable()
 export class PostService {
@@ -102,6 +103,9 @@ export class PostService {
     posts: RawPostFromAggregation[],
     userId: string,
   ): PostResponse[] {
+    // Only include lg_portrait and xl sizes for posts feed
+    const postImageSizes = [ImageSizeKey.LG_PORTRAIT, ImageSizeKey.XL];
+
     return posts.map((post) => ({
       id: post._id.toString(),
       userId: post.userId.toString(),
@@ -114,6 +118,7 @@ export class PostService {
         ownerId: m.ownerId.toString(),
         mimeType: m.mimeType,
         originalUrl: this.storageService.getPublicUrlFromKey(m.mediaKey),
+        images: this.storageService.getImageUrls(m.mediaKey, postImageSizes),
         duration: m.duration,
         transform: m.transform,
         status: m.status,

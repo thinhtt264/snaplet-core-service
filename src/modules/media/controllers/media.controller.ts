@@ -2,8 +2,6 @@ import {
   Controller,
   Post,
   Body,
-  Get,
-  Param,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -16,7 +14,6 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import {
   BatchUploadRequestResponse,
   ConfirmUploadResponse,
-  MediaResponse,
 } from '../interfaces/media-response.interface';
 
 @Controller('media')
@@ -40,10 +37,5 @@ export class MediaController {
     @Body() dto: ConfirmUploadDto,
   ): Promise<ConfirmUploadResponse> {
     return await this.mediaService.confirmUpload(userId, dto);
-  }
-
-  @Get(':id')
-  async getMediaById(@Param('id') mediaId: string): Promise<MediaResponse> {
-    return await this.mediaService.getMediaById(mediaId);
   }
 }

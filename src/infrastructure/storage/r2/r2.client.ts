@@ -35,4 +35,8 @@ export class R2Client {
   getPresignedUrlExpiresIn(): number {
     return this.config.presignedUrlExpiresIn;
   }
+
+  getImageCdnBaseUrl(): string {
+    return this.config.imageCdnBaseUrl;
+  }
 }

@@ -10,7 +10,7 @@ import { Media, MediaStatus } from '../schemas/media.schema';
 import { MediaUploadItem } from '../dto/request-batch-upload.dto';
 import { ConfirmUploadDto } from '../dto/confirm-upload.dto';
 import {
-  MediaResponse,
+  MediaBaseResponse,
   BatchUploadRequestResponse,
   BatchUploadItemResponse,
   ConfirmUploadResponse,
@@ -72,7 +72,7 @@ export class MediaService {
     try {
       const ownerObjectId = new Types.ObjectId(ownerId);
       const mediaIds = dto.mediaIds.map((id) => new Types.ObjectId(id));
-      const confirmedMedia: MediaResponse[] = [];
+      const confirmedMedia: MediaBaseResponse[] = [];
 
       for (const mediaId of mediaIds) {
         const existingMedia = await this.mediaRepository.findById(mediaId);
@@ -144,25 +144,6 @@ export class MediaService {
     }
   }
 
-  /**
-   * Get media by ID
-   */
-  async getMediaById(mediaId: string): Promise<MediaResponse> {
-    const media = await this.mediaRepository.findById(
-      new Types.ObjectId(mediaId),
-    );
-    if (!media) {
-      throw new NotFoundException('Media not found');
-    }
-    return this.transformMedia(media);
-  }
-
-  async getMediaByIds(mediaIds: string[]): Promise<MediaResponse[]> {
-    const objectIds = mediaIds.map((id) => new Types.ObjectId(id));
-    const media = await this.mediaRepository.findByIds(objectIds);
-    return media.map((m) => this.transformMedia(m));
-  }
-
   async assertMediaReadyAndOwned(
     mediaIds: string[],
     ownerId: string,
@@ -213,7 +194,7 @@ export class MediaService {
     return this.storageService.generatePresignedUploadUrl(key, mimeType);
   }
 
-  private transformMedia(media: Media): MediaResponse {
+  private transformMedia(media: Media): MediaBaseResponse {
     const originalUrl = this.storageService.getPublicUrlFromKey(media.mediaKey);
 
     return {

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { R2StorageService } from './r2/r2.storage.service';
+import { ImageUrls, ImageSizeKey } from '@common/types/image-transform.types';
 
 @Injectable()
 export class StorageService {
@@ -23,6 +24,18 @@ export class StorageService {
 
   getPublicUrlFromKey(key: string | undefined | null): string {
     return this.r2StorageService.getPublicUrlFromKey(key);
+  }
+
+  /**
+   * Generate image size URLs for a given key
+   * @param key - Storage key
+   * @param sizes - Optional array of sizes to include. If not provided, returns all sizes.
+   */
+  getImageUrls(
+    key: string | undefined | null,
+    sizes?: ImageSizeKey[],
+  ): ImageUrls | null {
+    return this.r2StorageService.getImageUrls(key, sizes);
   }
 
   /**
