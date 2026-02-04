@@ -54,9 +54,9 @@ export default () => ({
   relationships: {
     cache: {
       ttlSeconds: parseInt(
-        process.env.RELATIONSHIPS_CACHE_TTL_SECONDS || '300',
+        process.env.RELATIONSHIPS_CACHE_TTL_SECONDS || '3600',
         10,
-      ), // default: 5 minutes
+      ), // default: 1 hour
     },
   },
 
