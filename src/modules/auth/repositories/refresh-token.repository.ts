@@ -1,85 +1,51 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { RefreshToken } from '../schemas/refresh-token.schema';
+import { ConfigService } from '@nestjs/config';
+import { RedisService } from '@common/redis/redis.service';
+import { refreshTokenKey } from '@common/utils/redis.utils';
+import { expiresInToSeconds } from '@common/utils';
+
+/** Stored refresh token (Redis value). One per user, keyed by userId. */
+export interface StoredRefreshToken {
+  hashedToken: string;
+}
 
 @Injectable()
 export class RefreshTokenRepository {
   constructor(
-    @InjectModel(RefreshToken.name)
-    private readonly refreshTokenModel: Model<RefreshToken>,
+    private readonly redis: RedisService,
+    private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * Store one refresh token per user. Overwrites any existing token for this user.
+   */
   async create(
     userId: string,
-    deviceId: string,
     hashedToken: string,
-    expiresAt: Date,
-  ): Promise<RefreshToken> {
-    // Tối ưu: Query với userId + deviceId (tận dụng compound unique index)
-    // Upsert: nếu đã có token cho device này thì update, không thì tạo mới
-    const result = await this.refreshTokenModel
-      .findOneAndUpdate(
-        {
-          userId: new Types.ObjectId(userId),
-          deviceId,
-        },
-        {
-          $set: {
-            userId: new Types.ObjectId(userId),
-            deviceId,
-            hashedToken,
-            expiresAt,
-          },
-        },
-        {
-          upsert: true,
-          new: true,
-          setDefaultsOnInsert: true,
-        },
-      )
-      .exec();
-
-    return result as RefreshToken;
+  ): Promise<StoredRefreshToken> {
+    const key = refreshTokenKey(userId);
+    const refreshExpiresIn =
+      this.configService.get<string>('jwt.refreshExpiresIn') || '30d';
+    const ttlSeconds = expiresInToSeconds(refreshExpiresIn);
+    await this.redis.set(key, hashedToken, ttlSeconds);
+    return { hashedToken };
   }
 
-  async findByUserIdAndDevice(
-    userId: string,
-    deviceId: string,
-  ): Promise<RefreshToken | null> {
-    // Tối ưu: Query với userId + deviceId (tận dụng compound unique index)
-    // Filter expiresAt được apply sau khi dùng index
-    return this.refreshTokenModel
-      .findOne({
-        userId: new Types.ObjectId(userId),
-        deviceId,
-        expiresAt: { $gt: new Date() },
-      })
-      .populate('userId')
-      .exec();
-  }
-
-  async deleteByUserIdAndDevice(
-    userId: string,
-    deviceId: string,
-  ): Promise<void> {
-    // Hard delete: Xóa hẳn token (không cần soft delete)
-    // Tối ưu: Query với userId + deviceId (tận dụng compound unique index)
-    await this.refreshTokenModel
-      .deleteOne({
-        userId: new Types.ObjectId(userId),
-        deviceId,
-      })
-      .exec();
+  /**
+   * Get the stored refresh token for the user.
+   * Returns null if key is missing or expired (Redis TTL).
+   */
+  async findByUserId(userId: string): Promise<StoredRefreshToken | null> {
+    const key = refreshTokenKey(userId);
+    const hashedToken = await this.redis.get(key);
+    if (!hashedToken) {
+      return null;
+    }
+    return { hashedToken };
   }
 
   async deleteByUserId(userId: string): Promise<void> {
-    // Hard delete: Xóa hẳn tất cả tokens của user (logout all devices)
-    // Tối ưu: Query với userId (tận dụng index { userId: 1 })
-    await this.refreshTokenModel
-      .deleteMany({
-        userId: new Types.ObjectId(userId),
-      })
-      .exec();
+    const key = refreshTokenKey(userId);
+    await this.redis.del(key);
   }
 }

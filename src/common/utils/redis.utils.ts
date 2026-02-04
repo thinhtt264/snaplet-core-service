@@ -2,7 +2,10 @@
  * Redis utility functions
  */
 
-import { RedisKeyFeature } from '../constants/redis-keys.constants';
+import {
+  RedisKeyFeature,
+  REDIS_KEY_FEATURES,
+} from '../constants/redis-keys.constants';
 
 /**
  * Get date key in format YYYY-MM-DD (UTC)
@@ -28,4 +31,9 @@ export function buildRedisKey(
   const env = process.env.NODE_ENV || 'development';
   const cacheVersion = process.env.REDIS_CACHE_VERSION || 'v1';
   return `snaplet:${env}:${cacheVersion}:${feature}${extraValue ? `:${extraValue}` : ''}`;
+}
+
+/** Redis key for a user's refresh token (one per user). */
+export function refreshTokenKey(userId: string): string {
+  return `${REDIS_KEY_FEATURES.REFRESH_TOKEN}:${userId}`;
 }

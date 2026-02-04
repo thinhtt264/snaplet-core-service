@@ -5,18 +5,17 @@ import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../users/services/user.service';
 import { UserValidationService } from '../users/services/user-validation.service';
-import { RefreshTokenRepository } from './repositories/refresh-token.repository';
+import {
+  RefreshTokenRepository,
+  StoredRefreshToken,
+} from './repositories/refresh-token.repository';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import {
   AuthResponse,
   RefreshTokenResponse,
 } from './interfaces/auth-response.interface';
-import {
-  calculateExpirationDate,
-  throwInvalidCredentials,
-} from '@common/utils';
-import { RefreshToken } from './schemas/refresh-token.schema';
+import { throwInvalidCredentials } from '@common/utils';
 
 @Injectable()
 export class AuthService {
@@ -28,7 +27,7 @@ export class AuthService {
     private readonly refreshTokenRepository: RefreshTokenRepository,
   ) {}
 
-  async register(registerDto: RegisterDto, deviceId: string): Promise<any> {
+  async register(registerDto: RegisterDto): Promise<any> {
     // Note: DeviceDailyLimitGuard already set the Redis key atomically
     // If user creation fails, DeviceRegistrationCleanupFilter will clear the key
     await this.userValidationService.validateUserUnique(
@@ -45,7 +44,7 @@ export class AuthService {
 
     const accessToken = this.generateAccessToken(user._id.toString());
     const refreshToken = this.createRefreshToken();
-    await this.saveRefreshToken(user._id.toString(), deviceId, refreshToken);
+    await this.saveRefreshToken(user._id.toString(), refreshToken);
 
     return {
       token: {
@@ -63,7 +62,7 @@ export class AuthService {
     };
   }
 
-  async login(loginDto: LoginDto, deviceId: string): Promise<AuthResponse> {
+  async login(loginDto: LoginDto): Promise<AuthResponse> {
     const user = await this.userValidationService.validateUser(
       loginDto.email,
       loginDto.password,
@@ -76,7 +75,7 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user._id.toString());
     const refreshToken = this.createRefreshToken();
 
-    await this.saveRefreshToken(user._id.toString(), deviceId, refreshToken);
+    await this.saveRefreshToken(user._id.toString(), refreshToken);
 
     return {
       token: {
@@ -119,15 +118,11 @@ export class AuthService {
     return bcrypt.compare(token, hashedToken);
   }
 
-  async findAndVerifyTokenByUserIdAndDevice(
+  async findAndVerifyTokenByUserId(
     token: string,
     userId: string,
-    deviceId: string,
-  ): Promise<RefreshToken | null> {
-    const tokenDoc = await this.refreshTokenRepository.findByUserIdAndDevice(
-      userId,
-      deviceId,
-    );
+  ): Promise<StoredRefreshToken | null> {
+    const tokenDoc = await this.refreshTokenRepository.findByUserId(userId);
 
     if (!tokenDoc) {
       return null;
@@ -143,26 +138,15 @@ export class AuthService {
 
   private async saveRefreshToken(
     userId: string,
-    deviceId: string,
     refreshToken: string,
   ): Promise<void> {
     const hashedToken = await this.hashToken(refreshToken);
-    const refreshExpiresIn =
-      this.configService.get<string>('jwt.refreshExpiresIn') || '30d';
-    const expiresAt = calculateExpirationDate(refreshExpiresIn);
-
-    await this.refreshTokenRepository.create(
-      userId,
-      deviceId,
-      hashedToken,
-      expiresAt,
-    );
+    await this.refreshTokenRepository.create(userId, hashedToken);
   }
 
   async refreshAccessToken(
     refreshToken: string,
     accessToken: string,
-    deviceId: string,
   ): Promise<RefreshTokenResponse> {
     let userId: string;
     try {
@@ -175,10 +159,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired access token');
     }
 
-    const validToken = await this.findAndVerifyTokenByUserIdAndDevice(
+    const validToken = await this.findAndVerifyTokenByUserId(
       refreshToken,
       userId,
-      deviceId,
     );
 
     if (!validToken) {
@@ -186,7 +169,7 @@ export class AuthService {
     }
 
     const newRefreshToken = this.createRefreshToken();
-    await this.saveRefreshToken(userId, deviceId, newRefreshToken);
+    await this.saveRefreshToken(userId, newRefreshToken);
 
     return {
       accessToken: this.generateAccessToken(userId),
@@ -194,11 +177,7 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string, deviceId: string): Promise<void> {
-    await this.refreshTokenRepository.deleteByUserIdAndDevice(userId, deviceId);
-  }
-
-  async logoutAll(userId: string): Promise<void> {
+  async logout(userId: string): Promise<void> {
     await this.refreshTokenRepository.deleteByUserId(userId);
   }
 

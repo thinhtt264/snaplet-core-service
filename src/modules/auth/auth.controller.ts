@@ -13,7 +13,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RefreshTokenResponse } from './interfaces/auth-response.interface';
-import { AccessToken, DeviceId } from '@common/decorators/header.decorator';
+import { AccessToken } from '@common/decorators/header.decorator';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { DeviceDailyLimitGuard } from '@common/guards/device-daily-limit.guard';
 import { CurrentUserId } from '@common/decorators/current-user.decorator';
@@ -26,40 +26,32 @@ export class AuthController {
   @Post('register')
   @UseGuards(DeviceDailyLimitGuard)
   @HttpCode(HttpStatus.CREATED)
-  async register(
-    @Body() registerDto: RegisterDto,
-    @DeviceId() deviceId: string,
-  ) {
-    return this.authService.register(registerDto, deviceId);
+  async register(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto);
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto, @DeviceId() deviceId: string) {
-    return this.authService.login(loginDto, deviceId);
+  async login(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(
     @Body() refreshTokenDto: RefreshTokenDto,
-    @DeviceId() deviceId: string,
   ): Promise<RefreshTokenResponse> {
     return this.authService.refreshAccessToken(
       refreshTokenDto.refreshToken,
       refreshTokenDto.accessToken,
-      deviceId,
     );
   }
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async logout(
-    @CurrentUserId() userId: string,
-    @DeviceId() deviceId: string,
-  ): Promise<{ message: string }> {
-    await this.authService.logout(userId, deviceId);
+  async logout(@CurrentUserId() userId: string): Promise<{ message: string }> {
+    await this.authService.logout(userId);
     return { message: 'Logged out successfully' };
   }
 

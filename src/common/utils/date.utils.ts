@@ -43,3 +43,32 @@ export function calculateExpirationDate(
 
   return expiresAt;
 }
+
+/**
+ * Convert expiresIn string (e.g. '30d', '7d', '5m') to seconds for Redis TTL.
+ * @param expiresIn - String format: number + unit (s, m, h, d)
+ * @param defaultSeconds - Default seconds if format is invalid (default: 30 days in seconds)
+ */
+export function expiresInToSeconds(
+  expiresIn: string,
+  defaultSeconds: number = 30 * 24 * 60 * 60,
+): number {
+  const match = expiresIn.match(/^(\d+)([smhd])$/i);
+  if (!match) {
+    return defaultSeconds;
+  }
+  const value = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  switch (unit) {
+    case 's':
+      return value;
+    case 'm':
+      return value * 60;
+    case 'h':
+      return value * 60 * 60;
+    case 'd':
+      return value * 24 * 60 * 60;
+    default:
+      return defaultSeconds;
+  }
+}
