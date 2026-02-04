@@ -36,8 +36,14 @@ lerna-debug.log*
 
 # Environment
 .env
+.env.staging
+.env.production
 .env.development
+config.env
 
 # Temp
 *.tmp
 *.temp
+
+# Infrastructure
+infra/ec2/secrets

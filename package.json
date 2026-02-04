@@ -24,7 +24,8 @@
     "docker:redis": "docker-compose up -d redis",
     "docker:rebuild": "docker compose build --no-cache app && docker compose up -d app",
     "docker:restart": "docker compose restart app",
-    "docker:deploy": "docker compose build app && docker compose up -d app"
+    "docker:deploy": "docker compose build app && docker compose up -d app",
+    "infra:deploy": "sh infra/ec2/scripts/entry.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.972.0",

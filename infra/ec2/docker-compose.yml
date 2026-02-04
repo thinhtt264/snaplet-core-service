@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  app:
+    image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+    build:
+      context: ../..
+      dockerfile: infra/ec2/Dockerfile
+    container_name: ${CONTAINER_NAME:-snaplet-core-service}
+    env_file: .env
+    ports:
+      - "${PORT:-4040}:4040"
+    restart: unless-stopped
+    networks:
+      - snaplet-network
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-ap-southeast-1}
+        awslogs-group: ${AWSLOGS_GROUP:-/ec2/snaplet/core-service}
+        awslogs-stream: ${AWSLOGS_STREAM:-core-service}
+
+networks:
+  snaplet-network:
+    driver: bridge
