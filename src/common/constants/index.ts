@@ -3,13 +3,6 @@ export const API_VERSION = 'v1';
 export const MAX_MEDIA_FILE_SIZE = 8 * 1024 * 1024; // 8MB
 export const IMAGE_V1_FOLDER = 'imageV1';
 
-export enum Environment {
-  Development = 'development',
-  Production = 'production',
-  Test = 'test',
-  Staging = 'staging',
-}
-
 export enum OrderDirection {
   ASC = 'asc',
   DESC = 'desc',
