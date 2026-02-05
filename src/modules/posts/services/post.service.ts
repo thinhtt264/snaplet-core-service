@@ -103,8 +103,8 @@ export class PostService {
     posts: RawPostFromAggregation[],
     userId: string,
   ): PostResponse[] {
-    // Only include lg_portrait and xl sizes for posts feed
-    const postImageSizes = [ImageSizeKey.LG_PORTRAIT, ImageSizeKey.XL];
+    // Only include md and xl sizes for posts feed
+    const postImageSizes = [ImageSizeKey.MD, ImageSizeKey.XL];
 
     return posts.map((post) => ({
       id: post._id.toString(),
