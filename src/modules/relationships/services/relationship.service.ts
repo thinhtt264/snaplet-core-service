@@ -245,6 +245,16 @@ export class RelationshipService {
           'Can only accept relationship with pending status',
         );
       }
+      // Recipient (user B) = the user who is not the initiator
+      const recipientId = relationship.initiator.equals(relationship.user1Id)
+        ? relationship.user2Id
+        : relationship.user1Id;
+
+      if (!recipientId.equals(userObjectId)) {
+        throw new ForbiddenException(
+          'Only the recipient can accept a relationship request',
+        );
+      }
 
       // Business validation: Check ACCEPTED limit before accepting
       await this.validateRelationshipLimit(
