@@ -50,12 +50,12 @@ docker-compose pull
 docker rm -f "${CONTAINER_NAME:-snaplet-core-service}" 2>/dev/null || true
 docker-compose up -d
 
-echo "== Nginx (đảm bảo config + 443 cho verify) =="
+echo "== Nginx (sync config sau compose up) =="
 if [ -f "${APP_DIR}/nginx/app.conf" ]; then
   sudo mkdir -p /etc/nginx/ssl
   [ ! -f /etc/nginx/ssl/self-signed.crt ] && sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /etc/nginx/ssl/self-signed.key -out /etc/nginx/ssl/self-signed.crt -subj "/CN=localhost" 2>/dev/null || true
   sudo rm -f /etc/nginx/conf.d/default.conf 2>/dev/null
-  sudo cp "${APP_DIR}/nginx/app.conf" /etc/nginx/conf.d/app.conf
+  sudo rsync -av "${APP_DIR}/nginx/app.conf" /etc/nginx/conf.d/app.conf
   sudo nginx -t 2>/dev/null && (sudo systemctl start nginx 2>/dev/null || sudo systemctl reload nginx 2>/dev/null) || true
 fi

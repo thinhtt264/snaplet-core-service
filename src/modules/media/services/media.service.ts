@@ -195,7 +195,7 @@ export class MediaService {
   }
 
   private transformMedia(media: Media): MediaBaseResponse {
-    const originalUrl = this.storageService.getPublicUrlFromKey(media.mediaKey);
+    const originalUrl = this.storageService.getDefaultImageUrl(media.mediaKey);
 
     return {
       id: media._id.toString(),

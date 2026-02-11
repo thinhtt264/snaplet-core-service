@@ -71,8 +71,4 @@ export default () => ({
       10,
     ), // default: 15 minutes (900 seconds)
   },
-
-  imageCdn: {
-    baseUrl: process.env.IMAGE_CDN_BASE_URL || '',
-  },
 });

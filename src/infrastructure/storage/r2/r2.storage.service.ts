@@ -44,10 +44,10 @@ export class R2StorageService {
    * Generate public URL from key (original URL without CDN transformation)
    * Pattern: ${publicUrl}/${key}
    */
-  getPublicUrlFromKey(key: string | undefined | null): string {
+  getDefaultImageUrl(key: string | undefined | null): string {
     if (!key) return '';
-    const publicUrl = this.r2Client.getPublicUrl();
-    return `${publicUrl}/${key}`;
+    const imageCdnBaseUrl = this.r2Client.getImageCdnBaseUrl();
+    return `${imageCdnBaseUrl}/${key}`;
   }
 
   /**
@@ -57,10 +57,6 @@ export class R2StorageService {
   getCdnUrl(key: string, width: number, height: number): string {
     if (!key) return '';
     const cdnBaseUrl = this.r2Client.getImageCdnBaseUrl();
-    if (!cdnBaseUrl) {
-      // Fallback to public URL if CDN is not configured
-      return this.getPublicUrlFromKey(key);
-    }
     return `${cdnBaseUrl}/cdn-cgi/image/w=${width},h=${height}/${cdnBaseUrl}/${key}`;
   }
 
@@ -75,7 +71,6 @@ export class R2StorageService {
   ): ImageUrls | null {
     if (!key) return null;
 
-    const cdnBaseUrl = this.r2Client.getImageCdnBaseUrl();
     const sizesToGenerate = sizes ?? Object.values(ImageSizeKey);
 
     const result: ImageUrls = {};
@@ -83,12 +78,9 @@ export class R2StorageService {
     for (const size of sizesToGenerate) {
       const config = IMAGE_SIZE_CONFIGS[size];
       if (config) {
-        result[size] = cdnBaseUrl
-          ? this.getCdnUrl(key, config.width, config.height)
-          : this.getPublicUrlFromKey(key);
+        result[size] = this.getCdnUrl(key, config.width, config.height);
       }
     }
-
     return result;
   }
 

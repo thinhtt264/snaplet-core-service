@@ -80,7 +80,7 @@ export class MediaCleanupService {
    * Orphaned media = media that is READY or PENDING but not referenced in any post
    * and older than configured hours (default: 24 hours / 1 day)
    */
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async cleanupOrphanedMedia(): Promise<void> {
     this.logger.log('Starting orphaned media cleanup job...');
 

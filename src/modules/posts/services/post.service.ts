@@ -1,4 +1,10 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Types } from 'mongoose';
 import {
   GetPostsResponse,
@@ -96,6 +102,29 @@ export class PostService {
     };
   }
 
+  async deletePost(userId: string, postId: string): Promise<void> {
+    try {
+      const post = await this.postRepository.findPostById(
+        new Types.ObjectId(postId),
+      );
+      if (!post) {
+        throw new NotFoundException('Post not found');
+      }
+      if (post.userId.toString() !== userId) {
+        throw new ForbiddenException('You are not the owner of this post');
+      }
+
+      await this.postRepository.hardDeletePost(new Types.ObjectId(postId));
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to delete post',
+      );
+    }
+  }
+
   /**
    * Transform raw aggregation data to response
    */
@@ -117,7 +146,7 @@ export class PostService {
         id: m._id.toString(),
         ownerId: m.ownerId.toString(),
         mimeType: m.mimeType,
-        originalUrl: this.storageService.getPublicUrlFromKey(m.mediaKey),
+        originalUrl: this.storageService.getDefaultImageUrl(m.mediaKey),
         images: this.storageService.getImageUrls(m.mediaKey, postImageSizes),
         duration: m.duration,
         transform: m.transform,

@@ -28,15 +28,11 @@ export class R2Client {
     return this.config.bucket;
   }
 
-  getPublicUrl(): string {
-    return this.config.publicUrl;
-  }
-
   getPresignedUrlExpiresIn(): number {
     return this.config.presignedUrlExpiresIn;
   }
 
   getImageCdnBaseUrl(): string {
-    return this.config.imageCdnBaseUrl;
+    return this.config.publicUrl;
   }
 }

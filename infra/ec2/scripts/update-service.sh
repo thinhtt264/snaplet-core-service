@@ -58,6 +58,10 @@ docker-compose pull
 echo 'Restart container (giữ nguyên config, chỉ dùng image mới)...'
 docker-compose up -d --no-deps --force-recreate ${COMPOSE_SERVICE}
 
+echo 'Sync nginx config...'
+sudo rsync -av nginx/app.conf /etc/nginx/conf.d/app.conf
+sudo nginx -t 2>/dev/null && sudo systemctl reload nginx 2>/dev/null || true
+
 echo 'Container status:'
 docker ps --filter name=${CONTAINER_NAME} --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 "

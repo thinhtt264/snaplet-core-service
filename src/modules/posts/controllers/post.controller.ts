@@ -7,6 +7,8 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Delete,
+  Param,
 } from '@nestjs/common';
 import { PostService } from '../services/post.service';
 import { GetPostsQueryDto } from '../dto/get-posts-query.dto';
@@ -45,5 +47,14 @@ export class PostController {
       caption,
       visibility,
     );
+  }
+
+  @Delete(':postId')
+  @HttpCode(HttpStatus.OK)
+  async deletePost(
+    @CurrentUserId() userId: string,
+    @Param('postId') postId: string,
+  ): Promise<void> {
+    return await this.postService.deletePost(userId, postId);
   }
 }

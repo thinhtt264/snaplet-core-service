@@ -49,14 +49,6 @@ export class RelationshipController {
     return this.relationshipService.getRelationshipsByStatus(userId, status);
   }
 
-  /**
-   * Create a new relationship request
-   * Creates relationship in PENDING status
-   *
-   * @example POST /relationships
-   * @body { targetUserId: "507f1f77bcf86cd799439011" }
-   * @returns Created relationship document
-   */
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(
@@ -66,14 +58,6 @@ export class RelationshipController {
     return this.relationshipService.create(userId, body.targetUserId);
   }
 
-  /**
-   * Update relationship status
-   * Can be used to accept, reject, or block a relationship
-   *
-   * @example PATCH /relationships/507f1f77bcf86cd799439011
-   * @body { status: "accepted" }
-   * @returns Updated relationship document
-   */
   @Patch(':relationshipId')
   @HttpCode(HttpStatus.OK)
   async update(
@@ -84,13 +68,6 @@ export class RelationshipController {
     return this.relationshipService.update(userId, relationshipId, body.status);
   }
 
-  /**
-   * Delete a relationship
-   * Removes the relationship completely from the system
-   *
-   * @example DELETE /relationships/507f1f77bcf86cd799439011
-   * @returns No content
-   */
   @Delete(':relationshipId')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(

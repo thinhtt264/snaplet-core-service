@@ -20,6 +20,13 @@ export class PostRepository implements IPostRepository {
     return createdPost.save();
   }
 
+  async hardDeletePost(postId: Types.ObjectId): Promise<void> {
+    await this.postModel.deleteOne({ _id: postId }).exec();
+  }
+
+  async findPostById(postId: Types.ObjectId): Promise<Post | null> {
+    return this.postModel.findById(postId).exec();
+  }
   /**
    * Cursor-based pagination with optimized pipeline
    * Uses compound cursor (createdAt, _id) for stable pagination

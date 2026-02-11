@@ -22,8 +22,8 @@ export class StorageService {
     return this.r2StorageService.getPresignedUrlExpiresIn();
   }
 
-  getPublicUrlFromKey(key: string | undefined | null): string {
-    return this.r2StorageService.getPublicUrlFromKey(key);
+  getDefaultImageUrl(key: string | undefined | null): string {
+    return this.r2StorageService.getDefaultImageUrl(key);
   }
 
   /**

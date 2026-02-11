@@ -7,7 +7,6 @@ export interface R2Config {
   bucket: string;
   publicUrl: string;
   presignedUrlExpiresIn: number;
-  imageCdnBaseUrl: string;
 }
 
 export const getR2Config = (configService: ConfigService): R2Config => ({
@@ -18,5 +17,4 @@ export const getR2Config = (configService: ConfigService): R2Config => ({
   publicUrl: configService.get<string>('r2.publicUrl') || '',
   presignedUrlExpiresIn:
     configService.get<number>('r2.presignedUrlExpiresIn') || 900,
-  imageCdnBaseUrl: configService.get<string>('imageCdn.baseUrl') || '',
 });
