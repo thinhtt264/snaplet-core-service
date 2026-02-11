@@ -34,9 +34,13 @@ echo ""
 echo "== [1/3] BUILD & PUSH =="
 bash infra/ec2/scripts/build-and-push.sh
 
-# 2. SSH vào EC2 và chỉ pull + restart container
+# 2. Sync infra lên EC2, rồi SSH vào pull + restart container
 echo ""
-echo "== [2/3] PULL & RESTART CONTAINER =="
+echo "== [2/3] SYNC + PULL & RESTART CONTAINER =="
+echo 'Sync infra/ec2 → EC2...'
+bash infra/ec2/scripts/sync.sh
+
+echo 'SSH: pull image & restart...'
 bash infra/ec2/scripts/ssh-exec.sh "
 set -e
 cd ${EC2_DEPLOY_DIR}
