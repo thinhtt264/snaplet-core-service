@@ -327,6 +327,12 @@ export class RelationshipService {
       );
     }
 
+    if (relationship.status !== RelationshipStatus.ACCEPTED) {
+      throw new ConflictException(
+        'Can only unfriend when relationship status is accepted',
+      );
+    }
+
     await this.invalidateRelationshipsCache(relationship.user1Id.toString());
     await this.invalidateRelationshipsCache(relationship.user2Id.toString());
 
