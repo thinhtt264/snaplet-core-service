@@ -19,7 +19,7 @@ export enum RelationshipLimitReason {
   TARGET = 'TARGET_LIMIT',
 }
 
-export const MAX_RELATIONSHIPS_PER_USER = 50;
+export const MAX_RELATIONSHIPS_PER_USER = 30;
 export const DEFAULT_PAGE_SIZE = 10;
 export const MAX_PAGE_SIZE = 100;
 
