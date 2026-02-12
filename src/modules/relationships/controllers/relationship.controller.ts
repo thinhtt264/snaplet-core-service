@@ -34,19 +34,37 @@ export class RelationshipController {
   constructor(private readonly relationshipService: RelationshipService) {}
 
   /**
-   * Get relationships by status with other user details
-   * Returns flattened response structure that extends UserBasicInfoResponse
+   * Get current user's friend count (accepted relationships).
+   * Reuses Redis cache from getMyFriendIds.
+   *
+   * @example GET /relationships/friends/count
+   * @returns { count: number }
+   */
+  @Get('/friends/count')
+  @HttpCode(HttpStatus.OK)
+  async getMyFriendCount(
+    @CurrentUserId() userId: string,
+  ): Promise<{ count: number }> {
+    const count = await this.relationshipService.getMyFriendCount(userId);
+    return { count };
+  }
+
+  /**
+   * Get relationships by status with other user profiles (UserBasicInfoResponse).
    *
    * @example GET /relationships/status/accepted
-   * @returns List of relationships with populated other user information
+   * @returns List of relationships with populated other user profile
    */
   @Get('/status/:status')
   @HttpCode(HttpStatus.OK)
-  async getRelationshipsByStatus(
+  async getRelationshipsWithProfilesByStatus(
     @CurrentUserId() userId: string,
     @Param('status') status: RelationshipStatus,
   ): Promise<RelationshipWithOtherUserResponse[]> {
-    return this.relationshipService.getRelationshipsByStatus(userId, status);
+    return this.relationshipService.getRelationshipsWithProfilesByStatus(
+      userId,
+      status,
+    );
   }
 
   @Post()

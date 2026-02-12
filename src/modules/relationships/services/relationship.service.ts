@@ -35,7 +35,7 @@ export class RelationshipService {
   ) {
     this.cacheTtlSeconds = this.configService.get<number>(
       'relationships.cache.ttlSeconds',
-      300, // default: 5 minutes
+      3600, // default: 1 hour
     );
   }
 
@@ -93,7 +93,7 @@ export class RelationshipService {
     }
   }
 
-  async getRelationshipsByStatus(
+  async getRelationshipsWithProfilesByStatus(
     userId: string,
     status: RelationshipStatus,
   ): Promise<RelationshipWithOtherUserResponse[]> {
@@ -145,6 +145,11 @@ export class RelationshipService {
       },
       this.cacheTtlSeconds,
     );
+  }
+
+  async getMyFriendCount(userId: string): Promise<number> {
+    const friendIds = await this.getMyFriendIds(userId);
+    return friendIds.length;
   }
 
   private async invalidateRelationshipsCache(userId: string): Promise<void> {

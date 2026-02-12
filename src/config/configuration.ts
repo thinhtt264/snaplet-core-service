@@ -1,3 +1,5 @@
+const COMMON_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
+
 export default () => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
@@ -54,9 +56,10 @@ export default () => ({
   relationships: {
     cache: {
       ttlSeconds: parseInt(
-        process.env.RELATIONSHIPS_CACHE_TTL_SECONDS || '3600',
+        process.env.RELATIONSHIPS_CACHE_TTL_SECONDS ||
+          COMMON_CACHE_TTL_SECONDS.toString(),
         10,
-      ), // default: 1 hour
+      ), // default: 3 days
     },
   },
 
