@@ -73,6 +73,7 @@ export class CacheService {
    * @param keySuffix - Additional key suffix (e.g., userId)
    * @param computeFn - Function to compute value if cache miss
    * @param ttlSeconds - Time to live in seconds (required - must be provided by caller)
+   * @param options - Optional. shouldCache: only cache when this predicate returns true (default: always cache)
    * @returns Cached or computed value
    */
   async getOrCompute<T>(
@@ -80,6 +81,7 @@ export class CacheService {
     keySuffix: string,
     computeFn: () => Promise<T>,
     ttlSeconds: number,
+    options?: { shouldCache?: (value: T) => boolean },
   ): Promise<T> {
     const cached = await this.get<T>(keyPrefix, keySuffix);
     if (cached !== null) {
@@ -88,7 +90,10 @@ export class CacheService {
 
     try {
       const value = await computeFn();
-      await this.set(keyPrefix, keySuffix, value, ttlSeconds);
+      const shouldCache = options?.shouldCache ?? (() => true);
+      if (shouldCache(value)) {
+        await this.set(keyPrefix, keySuffix, value, ttlSeconds);
+      }
       return value;
     } catch (error) {
       this.logger.error(
@@ -173,44 +178,6 @@ export class CacheService {
     } catch (error) {
       this.logger.warn(
         `Cache invalidate by feature failed for ${keyPrefix}: ${error.message}`,
-      );
-    }
-  }
-
-  /**
-   * Invalidate cache keys for a specific feature and user ID (by pattern)
-   * Uses SCAN to find all keys matching the feature:userId:* pattern and deletes them
-   * @param keyPrefix - Redis key feature
-   * @param userId - User ID to invalidate cache for
-   */
-  async invalidateByFeatureAndUser(
-    keyPrefix: RedisKeyFeature,
-    userId: string,
-  ): Promise<void> {
-    const pattern = buildRedisKey(keyPrefix, `${userId}*`);
-    const redis = this.redisService.getClient();
-    const keys: string[] = [];
-    let cursor = '0';
-
-    try {
-      do {
-        const [nextCursor, foundKeys] = await redis.scan(
-          cursor,
-          'MATCH',
-          pattern,
-          'COUNT',
-          100,
-        );
-        cursor = nextCursor;
-        keys.push(...foundKeys);
-      } while (cursor !== '0');
-
-      if (keys.length > 0) {
-        await this.redisService.del(keys);
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Cache invalidate by feature and user failed for ${keyPrefix}: ${error.message}`,
       );
     }
   }

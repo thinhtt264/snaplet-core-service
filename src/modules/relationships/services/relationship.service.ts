@@ -131,6 +131,30 @@ export class RelationshipService {
     );
   }
 
+  async getRelationshipsWithProfilesByStatuses(
+    userId: string,
+    statuses: RelationshipStatus[],
+  ): Promise<RelationshipWithOtherUserResponse[]> {
+    const uniqueStatuses = [...new Set(statuses)];
+    if (uniqueStatuses.length === 1) {
+      return this.getRelationshipsWithProfilesByStatus(
+        userId,
+        uniqueStatuses[0],
+      );
+    }
+    const results = await Promise.all(
+      uniqueStatuses.map((status) =>
+        this.getRelationshipsWithProfilesByStatus(userId, status),
+      ),
+    );
+    const merged = results.flat();
+    merged.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+    return merged;
+  }
+
   async getMyFriendIds(userId: string): Promise<string[]> {
     const keySuffix = this.buildMyFriendIdsCacheKeySuffix(userId);
 
@@ -152,12 +176,57 @@ export class RelationshipService {
     return friendIds.length;
   }
 
+  /**
+   * Get relationship between current user and target user.
+   * @param currentUserId - Current user ID (from JWT)
+   * @param targetUserId - Target user ID to check relationship with
+   * @returns Relationship if exists, null otherwise
+   */
+  async getRelationshipWithUser(
+    currentUserId: string,
+    targetUserId: string,
+  ): Promise<RelationshipResponse | null> {
+    if (
+      !Types.ObjectId.isValid(currentUserId) ||
+      !Types.ObjectId.isValid(targetUserId)
+    ) {
+      throw new BadRequestException('Invalid user id');
+    }
+
+    const currentUserObjectId = new Types.ObjectId(currentUserId);
+    const targetUserObjectId = new Types.ObjectId(targetUserId);
+
+    const relationship =
+      await this.relationshipRepository.findExistingRelationship(
+        currentUserObjectId,
+        targetUserObjectId,
+      );
+
+    if (!relationship) {
+      return null;
+    }
+
+    return {
+      id: relationship._id.toString(),
+      user1Id: relationship.user1Id.toString(),
+      user2Id: relationship.user2Id.toString(),
+      status: relationship.status,
+      initiator: relationship.initiator.toString(),
+      createdAt: relationship.createdAt,
+      updatedAt: relationship.updatedAt,
+    };
+  }
+
   private async invalidateRelationshipsCache(userId: string): Promise<void> {
-    await this.cacheService.invalidateByFeatureAndUser(
-      REDIS_KEY_FEATURES.RELATIONSHIPS,
-      userId,
+    const relationshipSuffixes = Object.values(RelationshipStatus).map(
+      (status) => this.buildRelationshipCacheKeySuffix(userId, status),
     );
-    await this.cacheService.invalidateByFeatureAndUser(
+    await this.cacheService.invalidateMany(
+      REDIS_KEY_FEATURES.RELATIONSHIPS,
+      relationshipSuffixes,
+    );
+
+    await this.cacheService.invalidate(
       REDIS_KEY_FEATURES.MY_FRIEND_IDS,
       userId,
     );
@@ -324,12 +393,6 @@ export class RelationshipService {
     if (!isUser1 && !isUser2) {
       throw new ForbiddenException(
         'You do not have permission to delete this relationship',
-      );
-    }
-
-    if (relationship.status !== RelationshipStatus.ACCEPTED) {
-      throw new ConflictException(
-        'Can only unfriend when relationship status is accepted',
       );
     }
 

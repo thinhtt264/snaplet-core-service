@@ -1,7 +1,20 @@
-import { IsNotEmpty, IsString, IsEnum } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsEnum,
+  IsArray,
+  ArrayMinSize,
+} from 'class-validator';
+import { Transform } from 'class-transformer';
 import { RelationshipStatus } from '../schemas/relationship.schema';
 
 export class CreateRelationshipDto {
+  @IsNotEmpty({ message: 'Target User ID is required' })
+  @IsString({ message: 'Target User ID must be a string' })
+  targetUserId: string;
+}
+
+export class GetRelationshipWithUserDto {
   @IsNotEmpty({ message: 'Target User ID is required' })
   @IsString({ message: 'Target User ID must be a string' })
   targetUserId: string;
@@ -13,4 +26,22 @@ export class RelationshipStatusDto {
     message: 'Status must be one of: pending, accepted, blocked',
   })
   status: RelationshipStatus;
+}
+
+export class GetRelationshipsByStatusQueryDto {
+  @Transform(({ value }) =>
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean)
+      : [],
+  )
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one status is required' })
+  @IsEnum(RelationshipStatus, {
+    each: true,
+    message: 'Each status must be one of: pending, accepted, blocked',
+  })
+  statuses: RelationshipStatus[];
 }

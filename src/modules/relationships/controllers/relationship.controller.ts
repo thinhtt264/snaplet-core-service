@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -15,9 +16,10 @@ import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import {
   CreateRelationshipDto,
+  GetRelationshipWithUserDto,
+  GetRelationshipsByStatusQueryDto,
   RelationshipStatusDto,
 } from '../dto/relationship.dto';
-import { RelationshipStatus } from '../schemas/relationship.schema';
 import {
   RelationshipResponse,
   RelationshipWithOtherUserResponse,
@@ -50,20 +52,40 @@ export class RelationshipController {
   }
 
   /**
-   * Get relationships by status with other user profiles (UserBasicInfoResponse).
+   * Get relationships by one or more statuses with other user profiles.
+   * One status: GET /relationships?statuses=accepted. Multiple: ?statuses=accepted,pending
    *
-   * @example GET /relationships/status/accepted
-   * @returns List of relationships with populated other user profile
+   * @example GET /relationships?statuses=accepted,pending
+   * @returns List of relationships (merged, sorted by createdAt desc)
    */
-  @Get('/status/:status')
+  @Get('/')
   @HttpCode(HttpStatus.OK)
-  async getRelationshipsWithProfilesByStatus(
+  async getRelationshipsWithProfilesByStatuses(
     @CurrentUserId() userId: string,
-    @Param('status') status: RelationshipStatus,
+    @Query() query: GetRelationshipsByStatusQueryDto,
   ): Promise<RelationshipWithOtherUserResponse[]> {
-    return this.relationshipService.getRelationshipsWithProfilesByStatus(
+    return this.relationshipService.getRelationshipsWithProfilesByStatuses(
       userId,
-      status,
+      query.statuses,
+    );
+  }
+
+  /**
+   * Get relationship between current user and target user.
+   * Body: { targetUserId: string }
+   *
+   * @example POST /relationships/with-user
+   * @returns Relationship if exists, null otherwise
+   */
+  @Post('/with-user')
+  @HttpCode(HttpStatus.OK)
+  async getRelationshipWithUser(
+    @CurrentUserId() userId: string,
+    @Body() body: GetRelationshipWithUserDto,
+  ): Promise<RelationshipResponse | null> {
+    return this.relationshipService.getRelationshipWithUser(
+      userId,
+      body.targetUserId,
     );
   }
 
@@ -87,7 +109,7 @@ export class RelationshipController {
   }
 
   @Delete(':relationshipId')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   async delete(
     @CurrentUserId() userId: string,
     @Param('relationshipId') relationshipId: string,
