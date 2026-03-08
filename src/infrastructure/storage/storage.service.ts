@@ -26,6 +26,10 @@ export class StorageService {
     return this.r2StorageService.getDefaultImageUrl(key);
   }
 
+  getKeyFromImageUrl(url: string | undefined | null): string | null {
+    return this.r2StorageService.getKeyFromImageUrl(url);
+  }
+
   /**
    * Generate image size URLs for a given key
    * @param key - Storage key

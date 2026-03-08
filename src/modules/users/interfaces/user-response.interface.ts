@@ -15,3 +15,9 @@ export interface UserBasicInfoResponse {
   lastName: string;
   avatarUrl: string;
 }
+
+export interface AvatarUploadRequestResponse {
+  uploadUrl: string;
+  key: string;
+  maxSizeBytes: number;
+}

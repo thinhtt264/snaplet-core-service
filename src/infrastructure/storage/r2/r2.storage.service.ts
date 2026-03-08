@@ -51,6 +51,27 @@ export class R2StorageService {
   }
 
   /**
+   * Extract storage key from either a default image URL
+   * or a resized CDN URL.
+   *
+   * Works for:
+   * - ${cdnBaseUrl}/${key}
+   * - ${cdnBaseUrl}/cdn-cgi/image/.../${cdnBaseUrl}/${key}
+   */
+  getKeyFromImageUrl(url: string | undefined | null): string | null {
+    if (!url) return null;
+    const imageCdnBaseUrl = this.r2Client.getImageCdnBaseUrl();
+    const marker = `${imageCdnBaseUrl}/`;
+
+    const lastIndex = url.lastIndexOf(marker);
+    if (lastIndex === -1) {
+      return null;
+    }
+
+    return url.substring(lastIndex + marker.length);
+  }
+
+  /**
    * Generate CDN URL with dynamic width and height
    * Pattern: ${cdnBaseUrl}/cdn-cgi/image/w=${width},h=${height}/${cdnBaseUrl}/${key}
    */

@@ -10,6 +10,7 @@ import { UserValidationService } from './services/user-validation.service';
 import { UserRepository } from './repositories/user.repository';
 import { UsersController } from './controllers/users.controller';
 import { RedisService } from '@common/redis';
+import { StorageModule } from '@infrastructure/storage/storage.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { RedisService } from '@common/redis';
       { name: User.name, schema: UserSchema },
       { name: UserFingerprint.name, schema: UserFingerprintSchema },
     ]),
+    StorageModule,
   ],
   controllers: [UsersController],
   providers: [UserService, UserValidationService, UserRepository, RedisService],

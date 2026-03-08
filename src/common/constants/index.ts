@@ -1,7 +1,9 @@
 export const API_VERSION = 'v1';
 
 export const MAX_MEDIA_FILE_SIZE = 8 * 1024 * 1024; // 8MB
+export const MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 export const IMAGE_V1_FOLDER = 'imageV1';
+export const AVATAR_V1_FOLDER = 'avatarV1';
 
 export enum OrderDirection {
   ASC = 'asc',

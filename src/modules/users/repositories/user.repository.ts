@@ -51,4 +51,17 @@ export class UserRepository implements IUserRepository {
     });
     return user.save();
   }
+
+  async updateAvatarUrl(
+    userId: string,
+    avatarUrl: string,
+  ): Promise<User | null> {
+    return this.userModel
+      .findOneAndUpdate(
+        { _id: userId, isDeleted: false },
+        { avatarUrl },
+        { new: true },
+      )
+      .exec();
+  }
 }
