@@ -31,7 +31,7 @@ export class User extends AbstractDocument {
   lastName: string;
 
   @Prop({ default: '' })
-  avatarUrl: string;
+  avatarKey: string;
 
   @Prop({ default: '' })
   deviceToken: string;

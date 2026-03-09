@@ -16,7 +16,13 @@ import { RedisService } from '@common/redis/redis.service';
 import { randomBytes } from 'crypto';
 import { AVATAR_V1_FOLDER, MAX_AVATAR_FILE_SIZE } from '@common/constants';
 import { StorageService } from '@infrastructure/storage/storage.service';
-import { ImageSizeKey } from '@common/types';
+import { ImageSizeKey, ImageSizesResponse } from '@common/types';
+
+const AVATAR_SIZE_KEYS: ImageSizeKey[] = [
+  ImageSizeKey.XS,
+  ImageSizeKey.SM,
+  ImageSizeKey.MD,
+];
 
 @Injectable()
 export class UserService {
@@ -79,7 +85,7 @@ export class UserService {
       throw new NotFoundException(`User not found`);
     }
 
-    return this.transformUserToProfile(user);
+    return this.buildUserProfileResponse(user);
   }
 
   async requestAvatarUpload(
@@ -132,22 +138,13 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    const images = this.storageService.getImageUrls(key, [ImageSizeKey.XS]);
-    const avatarUrl =
-      images?.[ImageSizeKey.XS] ?? this.storageService.getDefaultImageUrl(key);
-
-    const updatedUser = await this.userRepository.updateAvatarUrl(
-      userId,
-      avatarUrl,
-    );
+    const updatedUser = await this.userRepository.updateAvatarKey(userId, key);
 
     if (!updatedUser) {
       throw new NotFoundException('Unable to update avatar');
     }
 
-    const oldKey = this.storageService.getKeyFromImageUrl(
-      currentUser.avatarUrl,
-    );
+    const oldKey = currentUser.avatarKey;
     if (
       oldKey &&
       oldKey !== key &&
@@ -158,7 +155,7 @@ export class UserService {
       });
     }
 
-    return this.transformUserToProfile(updatedUser);
+    return this.buildUserProfileResponse(updatedUser);
   }
 
   async deleteAvatar(userId: string): Promise<IUserProfileResponse> {
@@ -168,29 +165,60 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    const currentAvatarUrl = user.avatarUrl;
+    const currentKey = user.avatarKey;
 
     setImmediate(() => {
-      this.userRepository.updateAvatarUrl(userId, '').catch(() => undefined);
-      if (currentAvatarUrl) {
-        const key = this.storageService.getKeyFromImageUrl(currentAvatarUrl);
-        if (key?.startsWith(`${AVATAR_V1_FOLDER}/${userId}-`)) {
-          this.storageService.deleteFile(key).catch(() => undefined);
-        }
+      this.userRepository.updateAvatarKey(userId, '').catch(() => undefined);
+      if (
+        currentKey &&
+        currentKey.startsWith(`${AVATAR_V1_FOLDER}/${userId}-`)
+      ) {
+        this.storageService.deleteFile(currentKey).catch(() => undefined);
       }
     });
 
-    return { ...this.transformUserToProfile(user), avatarUrl: '' };
+    return this.buildUserProfileResponse(user, '');
   }
 
-  private transformUserToProfile(user: User): IUserProfileResponse {
+  /**
+   * Build avatar URLs from storage key. Domain logic for avatar response shape.
+   * All fields are always string (never null/undefined).
+   * @param options.sizes - Which CDN sizes to include (default: XS, SM, MD). Omitted sizes are returned as ''.
+   */
+  getAvatarUrlsForKey(
+    key: string | undefined | null,
+    options?: { sizes?: ImageSizeKey[] },
+  ): ImageSizesResponse {
+    const sizes = options?.sizes ?? AVATAR_SIZE_KEYS;
+    const original = this.storageService.getDefaultImageUrl(key);
+    const urls = this.storageService.getImageUrls(key, sizes);
+    return {
+      original: original ?? '',
+      xs: urls?.[ImageSizeKey.XS] ?? '',
+      sm: urls?.[ImageSizeKey.SM] ?? '',
+      md: urls?.[ImageSizeKey.MD] ?? '',
+      xl: urls?.[ImageSizeKey.XL] ?? '',
+    };
+  }
+
+  /**
+   * Build profile with avatarUrls (original + XS, SM, MD) from stored avatarKey.
+   * Pass overrideAvatarKey (e.g. '') when deleting to return empty URLs. All URL fields are always string.
+   */
+  buildUserProfileResponse(
+    user: User,
+    overrideAvatarKey?: string,
+  ): IUserProfileResponse {
+    const key =
+      overrideAvatarKey !== undefined ? overrideAvatarKey : user.avatarKey;
+    const avatarUrls = this.getAvatarUrlsForKey(key);
     return {
       id: user._id.toString(),
       email: user.email,
       username: user.username,
       firstName: user.firstName,
       lastName: user.lastName,
-      avatarUrl: user.avatarUrl,
+      avatarUrls,
       createdAt: user.createdAt,
     };
   }

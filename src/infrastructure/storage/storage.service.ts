@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { R2StorageService } from './r2/r2.storage.service';
-import { ImageUrls, ImageSizeKey } from '@common/types/image-transform.types';
+import { ImageUrls, ImageSizeKey } from '@common/types';
 
 @Injectable()
 export class StorageService {

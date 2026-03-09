@@ -1,10 +1,14 @@
+import type { AvatarUrlsResponse, ImageSizesResponse } from '@common/types';
+
+export type { AvatarUrlsResponse, ImageSizesResponse };
+
 export interface IUserProfileResponse {
   id: string;
   email: string;
   username: string;
   firstName: string;
   lastName: string;
-  avatarUrl: string;
+  avatarUrls: AvatarUrlsResponse;
   createdAt: Date;
 }
 
@@ -13,7 +17,7 @@ export interface UserBasicInfoResponse {
   username: string;
   firstName: string;
   lastName: string;
-  avatarUrl: string;
+  avatarUrls: AvatarUrlsResponse;
 }
 
 export interface AvatarUploadRequestResponse {

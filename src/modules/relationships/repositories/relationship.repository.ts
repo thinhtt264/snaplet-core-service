@@ -64,7 +64,7 @@ export class RelationshipRepository implements IRelationshipRepository {
             username: { $ifNull: ['$friend.username', ''] },
             firstName: { $ifNull: ['$friend.firstName', ''] },
             lastName: { $ifNull: ['$friend.lastName', ''] },
-            avatarUrl: { $ifNull: ['$friend.avatarUrl', ''] },
+            avatarKey: { $ifNull: ['$friend.avatarKey', ''] },
             relationshipId: { $toString: '$_id' },
             createdAt: 1,
             status: 1,

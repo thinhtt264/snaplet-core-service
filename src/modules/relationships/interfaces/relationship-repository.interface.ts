@@ -11,7 +11,7 @@ export interface RelationshipAggregateResult {
   username: string;
   firstName: string;
   lastName: string;
-  avatarUrl: string;
+  avatarKey: string;
   relationshipId: string; // Relationship document ID (as string)
   createdAt: Date;
   status: RelationshipStatus;

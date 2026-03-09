@@ -1,14 +1,15 @@
 import { ImageMimeType } from '@common/types/mime-type.types';
-import { ImageTransform, ImageUrls } from '@common/types';
+import { ImageTransform, ImageSizesResponse } from '@common/types';
 
 /**
  * Base media info (internal use / upload responses)
+ * images: original + CDN sizes (xs, sm, md, xl) – same pattern as avatar avatarUrls
  */
 export interface MediaBaseResponse {
   id: string;
   ownerId: string;
   mimeType: ImageMimeType;
-  originalUrl: string;
+  images: ImageSizesResponse;
   duration?: number;
   transform: ImageTransform;
   status: string;
@@ -16,12 +17,8 @@ export interface MediaBaseResponse {
   updatedAt: Date;
 }
 
-/**
- * Full media response with CDN image URLs (for feed/posts)
- */
-export interface MediaResponse extends MediaBaseResponse {
-  images: ImageUrls | null;
-}
+/** Full media response (for feed/posts) – same as base */
+export type MediaResponse = MediaBaseResponse;
 
 export interface UploadRequestResponse {
   mediaId: string;

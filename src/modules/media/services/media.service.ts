@@ -17,6 +17,15 @@ import {
 } from '../interfaces/media-response.interface';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import { IMAGE_V1_FOLDER, MAX_MEDIA_FILE_SIZE } from '@common/constants';
+import { ImageSizeKey } from '@common/types';
+import type { ImageSizesResponse } from '@common/types';
+
+const MEDIA_SIZE_KEYS: ImageSizeKey[] = [
+  ImageSizeKey.XS,
+  ImageSizeKey.SM,
+  ImageSizeKey.MD,
+  ImageSizeKey.XL,
+];
 
 @Injectable()
 export class MediaService {
@@ -194,14 +203,33 @@ export class MediaService {
     return this.storageService.generatePresignedUploadUrl(key, mimeType);
   }
 
-  private transformMedia(media: Media): MediaBaseResponse {
-    const originalUrl = this.storageService.getDefaultImageUrl(media.mediaKey);
+  /**
+   * Build image URLs (original + sizes) from storage key. Same pattern as avatar.
+   * @param options.sizes - Which CDN sizes to include (default: XS, SM, MD, XL). Omitted sizes are ''.
+   */
+  getImageSizesForKey(
+    key: string | undefined | null,
+    options?: { sizes?: ImageSizeKey[] },
+  ): ImageSizesResponse {
+    const sizes = options?.sizes ?? MEDIA_SIZE_KEYS;
+    const original = this.storageService.getDefaultImageUrl(key);
+    const urls = this.storageService.getImageUrls(key, sizes);
+    return {
+      original: original ?? '',
+      xs: urls?.[ImageSizeKey.XS] ?? '',
+      sm: urls?.[ImageSizeKey.SM] ?? '',
+      md: urls?.[ImageSizeKey.MD] ?? '',
+      xl: urls?.[ImageSizeKey.XL] ?? '',
+    };
+  }
 
+  private transformMedia(media: Media): MediaBaseResponse {
+    const images = this.getImageSizesForKey(media.mediaKey);
     return {
       id: media._id.toString(),
       ownerId: media.ownerId.toString(),
       mimeType: media.mimeType,
-      originalUrl,
+      images,
       duration: media.duration,
       transform: media.transform,
       status: media.status,

@@ -1,3 +1,5 @@
+import type { AvatarUrlsResponse } from '@common/types';
+
 export interface AuthResponse {
   token: TokenResponse;
   user: {
@@ -6,7 +8,7 @@ export interface AuthResponse {
     username: string;
     firstName: string;
     lastName: string;
-    avatarUrl: string;
+    avatarUrls: AvatarUrlsResponse;
   };
 }
 export interface TokenResponse {

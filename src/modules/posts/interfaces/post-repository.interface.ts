@@ -29,7 +29,7 @@ export interface RawUserFromAggregation {
   username: string;
   firstName: string;
   lastName: string;
-  avatarUrl: string;
+  avatarKey: string;
 }
 
 /**

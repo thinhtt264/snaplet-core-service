@@ -51,14 +51,7 @@ export class AuthService {
         accessToken,
         refreshToken,
       },
-      user: {
-        id: user._id.toString(),
-        email: user.email,
-        username: user.username,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        avatarUrl: user.avatarUrl,
-      },
+      user: this.userService.buildUserProfileResponse(user),
     };
   }
 
@@ -82,14 +75,7 @@ export class AuthService {
         accessToken,
         refreshToken,
       },
-      user: {
-        id: user._id.toString(),
-        email: user.email,
-        username: user.username,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        avatarUrl: user.avatarUrl,
-      },
+      user: this.userService.buildUserProfileResponse(user),
     };
   }
 

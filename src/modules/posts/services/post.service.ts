@@ -16,6 +16,7 @@ import { parseCursor, encodeCursor } from '../types/feed-cursor.types';
 import { PostRepository } from '../repositories/post.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
+import { UserService } from '@modules/users/services/user.service';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import { ImageSizeKey } from '@common/types';
 
@@ -25,6 +26,7 @@ export class PostService {
     private readonly postRepository: PostRepository,
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
+    private readonly userService: UserService,
     private readonly storageService: StorageService,
   ) {}
 
@@ -135,29 +137,36 @@ export class PostService {
     // Only include md and xl sizes for posts feed
     const postImageSizes = [ImageSizeKey.MD, ImageSizeKey.XL];
 
-    return posts.map((post) => ({
-      id: post._id.toString(),
-      userId: post.userId.toString(),
-      username: post.user.username,
-      firstName: post.user.firstName,
-      lastName: post.user.lastName,
-      avatarUrl: post.user.avatarUrl,
-      media: post.media.map((m) => ({
-        id: m._id.toString(),
-        ownerId: m.ownerId.toString(),
-        mimeType: m.mimeType,
-        originalUrl: this.storageService.getDefaultImageUrl(m.mediaKey),
-        images: this.storageService.getImageUrls(m.mediaKey, postImageSizes),
-        duration: m.duration,
-        transform: m.transform,
-        status: m.status,
-        createdAt: m.createdAt,
-        updatedAt: m.updatedAt,
-      })),
-      caption: post.caption,
-      visibility: post.visibility,
-      createdAt: post.createdAt,
-      isOwnPost: post.userId.toString() === userId,
-    }));
+    return posts.map((post) => {
+      const avatarUrls = this.userService.getAvatarUrlsForKey(
+        post.user.avatarKey,
+        { sizes: [ImageSizeKey.XS] },
+      );
+      return {
+        id: post._id.toString(),
+        userId: post.userId.toString(),
+        username: post.user.username,
+        firstName: post.user.firstName,
+        lastName: post.user.lastName,
+        avatarUrls,
+        media: post.media.map((m) => ({
+          id: m._id.toString(),
+          ownerId: m.ownerId.toString(),
+          mimeType: m.mimeType,
+          images: this.mediaService.getImageSizesForKey(m.mediaKey, {
+            sizes: postImageSizes,
+          }),
+          duration: m.duration,
+          transform: m.transform,
+          status: m.status,
+          createdAt: m.createdAt,
+          updatedAt: m.updatedAt,
+        })),
+        caption: post.caption,
+        visibility: post.visibility,
+        createdAt: post.createdAt,
+        isOwnPost: post.userId.toString() === userId,
+      };
+    });
   }
 }

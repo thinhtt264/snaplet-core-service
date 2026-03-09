@@ -52,14 +52,14 @@ export class UserRepository implements IUserRepository {
     return user.save();
   }
 
-  async updateAvatarUrl(
+  async updateAvatarKey(
     userId: string,
-    avatarUrl: string,
+    avatarKey: string,
   ): Promise<User | null> {
     return this.userModel
       .findOneAndUpdate(
         { _id: userId, isDeleted: false },
-        { avatarUrl },
+        { avatarKey },
         { new: true },
       )
       .exec();

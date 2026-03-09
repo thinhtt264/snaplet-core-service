@@ -22,7 +22,6 @@ import { throwRelationshipLimitExceeded } from '@common/utils/common.utils';
 import { UserService } from '@modules/users/services/user.service';
 import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
-
 @Injectable()
 export class RelationshipService {
   private readonly cacheTtlSeconds: number;
@@ -117,7 +116,9 @@ export class RelationshipService {
             username: relationship.username,
             firstName: relationship.firstName,
             lastName: relationship.lastName,
-            avatarUrl: relationship.avatarUrl,
+            avatarUrls: this.userService.getAvatarUrlsForKey(
+              relationship.avatarKey,
+            ),
             createdAt: relationship.createdAt,
             status: relationship.status,
           }));
