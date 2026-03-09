@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -18,6 +19,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
 import { RequestAvatarUploadDto } from '../dto/request-avatar-upload.dto';
 import { ConfirmAvatarUploadDto } from '../dto/confirm-avatar-upload.dto';
+import { UpdateDisplayNameDto } from '../dto/update-display-name.dto';
 import {
   AvatarUploadRequestResponse,
   IUserProfileResponse,
@@ -76,5 +78,19 @@ export class UsersController {
     @CurrentUserId() userId: string,
   ): Promise<IUserProfileResponse> {
     return this.userService.deleteAvatar(userId);
+  }
+
+  @Patch('display-name')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async updateDisplayName(
+    @CurrentUserId() userId: string,
+    @Body() dto: UpdateDisplayNameDto,
+  ): Promise<IUserProfileResponse> {
+    return this.userService.updateDisplayName(
+      userId,
+      dto.firstName,
+      dto.lastName,
+    );
   }
 }

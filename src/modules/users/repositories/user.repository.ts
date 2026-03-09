@@ -64,4 +64,21 @@ export class UserRepository implements IUserRepository {
       )
       .exec();
   }
+
+  async updateName(
+    userId: string,
+    firstName: string,
+    lastName: string,
+  ): Promise<User | null> {
+    return this.userModel
+      .findOneAndUpdate(
+        { _id: userId, isDeleted: false },
+        {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+        },
+        { new: true },
+      )
+      .exec();
+  }
 }

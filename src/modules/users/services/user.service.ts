@@ -222,4 +222,22 @@ export class UserService {
       createdAt: user.createdAt,
     };
   }
+
+  async updateDisplayName(
+    userId: string,
+    firstName: string,
+    lastName: string,
+  ): Promise<IUserProfileResponse> {
+    const updatedUser = await this.userRepository.updateName(
+      userId,
+      firstName,
+      lastName,
+    );
+
+    if (!updatedUser) {
+      throw new NotFoundException('Unable to update display name');
+    }
+
+    return this.buildUserProfileResponse(updatedUser);
+  }
 }
