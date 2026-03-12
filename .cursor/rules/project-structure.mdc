@@ -79,13 +79,24 @@ Feature modules live under `src/modules`, following the pattern: **Controller â†
   - Uses `StorageModule` and R2 storage (`infrastructure/storage/r2/*`).
 
 - `src/modules/posts`
-  - `post.controller.ts`: create post and fetch feed endpoints.
-  - `post.service.ts`: main posts business logic, integrates with `PostRepository`, `MediaService`, `RelationshipService`.
+  - `post.controller.ts`:
+    - Feed endpoints (`GET /posts/feed`) using cursor-based pagination.
+    - SSE stream endpoint (`Sse /posts/stream`) for real-time unread updates.
+    - Mutations: create (`POST /posts`), unread count (`GET /posts/unread-count`), mark seen (`POST /posts/mark-seen`), delete (`DELETE /posts/:postId`).
+  - `post.service.ts`:
+    - Main posts business logic, integrates with `PostRepository`, `MediaService`, `RelationshipService`, `UserService`, `CacheService`, and `RedisService`.
+    - Encodes/decodes compound cursors via `types/feed-cursor.types.ts`.
+    - Maintains unread counters using Redis/Cache with a 7â€‘day TTL and emits SSE events on post creation.
+  - `post-sse.service.ts`:
+    - Manages in-memory SSE connections per user.
+    - Resets session-scoped unread/seq Redis keys on connect/disconnect.
+    - Emits `posts_update` events with `{ type, seq, count }` payloads to active connections.
   - `post.repository.ts`:
     - Mongo aggregation for feed, joining users and media.
     - **Cursor-based pagination uses a compound cursor on `createdAt` + `_id`**, encoded/decoded in `types/feed-cursor.types.ts`.
-  - `schemas/post.schema.ts`: post structure and indexes, including compound indexes on `{ userId, createdAt, _id }` to support feed queries.
-  - `dto/*`, `interfaces/*`: create/get posts DTOs and typed responses.
+    - Provides `countUnreadPostsAfterCursor` and other helpers used for unread counts and hard deletes.
+  - `schemas/post.schema.ts`: post structure and indexes, including compound indexes on `{ userId, createdAt, _id }` to support feed and unread queries.
+  - `dto/*`, `interfaces/*`: create/get posts DTOs and typed responses for feed, unread count, and SSE payloads.
 
 - `src/modules/relationships`
   - `relationship.controller.ts`: follow/unfollow and relationship queries.
