@@ -254,4 +254,26 @@ export class PostRepository implements IPostRepository {
     const results = await this.postModel.aggregate(pipeline as any[]).exec();
     return results.length > 0 ? results[0] : null;
   }
+
+  /**
+   * Count unread posts from given friends strictly after the provided cursor.
+   * Uses createdAt range to leverage idx_userId_createdAt_id_active.
+   */
+  async countUnreadPostsAfterCursor(params: {
+    friendIds: string[];
+    cursorCreatedAt: Date;
+    cursorId: Types.ObjectId;
+  }): Promise<number> {
+    const { friendIds, cursorCreatedAt } = params;
+
+    const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
+
+    return this.postModel
+      .countDocuments({
+        userId: { $in: friendObjectIds },
+        isDeleted: { $ne: true },
+        createdAt: { $gt: cursorCreatedAt },
+      })
+      .exec();
+  }
 }

@@ -8,6 +8,8 @@ import { MediaModule } from '../media/media.module';
 import { RelationshipsModule } from '../relationships/relationships.module';
 import { UsersModule } from '../users/users.module';
 import { StorageModule } from '@infrastructure/storage/storage.module';
+import { PostSseService } from './services/post-sse.service';
+import { PostEventListener } from './listeners/post-sevent.listener';
 
 @Module({
   imports: [
@@ -18,6 +20,6 @@ import { StorageModule } from '@infrastructure/storage/storage.module';
     StorageModule,
   ],
   controllers: [PostController],
-  providers: [PostService, PostRepository],
+  providers: [PostService, PostRepository, PostSseService, PostEventListener],
 })
 export class PostsModule {}

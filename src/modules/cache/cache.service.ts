@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@common/redis/redis.service';
 import { buildRedisKey } from '@common/utils/redis.utils';
 import { RedisKeyFeature } from '@common/constants/redis-keys.constants';
@@ -14,10 +13,7 @@ export interface CacheOptions {
 export class CacheService {
   private readonly logger = new Logger(CacheService.name);
 
-  constructor(
-    private readonly redisService: RedisService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly redisService: RedisService) {}
 
   /**
    * Get value from cache

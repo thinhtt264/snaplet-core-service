@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Types } from 'mongoose';
 import {
   GetPostsResponse,
@@ -18,14 +19,23 @@ import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
 import { ImageSizeKey } from '@common/types';
+import { CacheService } from '@modules/cache/cache.service';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
+import { POST_SSE_EVENTS } from '@common/constants/event-names.constants';
+import { RedisService } from '@common/redis/redis.service';
 
 @Injectable()
 export class PostService {
+  private static readonly UNREAD_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+
   constructor(
     private readonly postRepository: PostRepository,
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
+    private readonly redisService: RedisService,
+    private readonly cacheService: CacheService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async getPostsFeed(
@@ -64,8 +74,33 @@ export class PostService {
         ? encodeCursor(result.nextCursor)
         : null;
 
+      const transformed = this.transformPosts(result.posts, userId);
+
+      // Chỉ chạy khi fetch trang đầu (không có cursorParam)
+      if (!cursor && result.posts.length > 0) {
+        const newest = result.posts[0];
+
+        setImmediate(async () => {
+          await Promise.all([
+            this.cacheService.set(
+              REDIS_KEY_FEATURES.POSTS_CACHE_LAST_SEEN_CURSOR,
+              userId,
+              {
+                createdAt: newest.createdAt.toISOString(),
+                id: newest._id.toString(),
+              },
+              PostService.UNREAD_TTL_SECONDS,
+            ),
+            this.cacheService.invalidate(
+              REDIS_KEY_FEATURES.POSTS_CACHE_UNREAD,
+              userId,
+            ),
+          ]);
+        });
+      }
+
       return {
-        data: this.transformPosts(result.posts, userId),
+        data: transformed,
         pagination: {
           limit,
           nextCursor,
@@ -78,9 +113,6 @@ export class PostService {
     }
   }
 
-  /**
-   * Create a new post
-   */
   async createPost(
     userId: string,
     mediaIds: string[],
@@ -96,10 +128,56 @@ export class PostService {
       visibility: visibility ?? PostVisibility.FRIEND_ONLY,
     });
 
+    this.eventEmitter.emit(POST_SSE_EVENTS.POST_CREATED, {
+      postId: post._id.toString(),
+      authorId: userId,
+    });
+
     return {
       id: post._id.toString(),
       createdAt: post.createdAt,
     };
+  }
+
+  async getUnreadCount(userId: string): Promise<{ count: number }> {
+    const count = await this.cacheService.getOrCompute<number>(
+      REDIS_KEY_FEATURES.POSTS_CACHE_UNREAD,
+      userId,
+      async () => {
+        // 2. Check cursor
+        const cursor = await this.cacheService.get<{
+          createdAt: string;
+          id: string;
+        }>(REDIS_KEY_FEATURES.POSTS_CACHE_LAST_SEEN_CURSOR, userId);
+
+        if (!cursor) {
+          return 0;
+        }
+
+        const friendIds = await this.relationshipService.getMyFriendIds(userId);
+        if (!friendIds.length) {
+          return 0;
+        }
+
+        const count = await this.postRepository.countUnreadPostsAfterCursor({
+          friendIds,
+          cursorCreatedAt: new Date(cursor.createdAt),
+          cursorId: new Types.ObjectId(cursor.id),
+        });
+
+        return count;
+      },
+      PostService.UNREAD_TTL_SECONDS,
+    );
+
+    return { count };
+  }
+
+  markPostsSeen(userId: string): void {
+    // Only reset unread counter, keep seq as-is
+    this.redisService.del(
+      `${REDIS_KEY_FEATURES.POSTS_SESSION_UNREAD}:${userId}`,
+    );
   }
 
   async deletePost(userId: string, postId: string): Promise<void> {

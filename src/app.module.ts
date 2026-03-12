@@ -3,6 +3,7 @@ import { APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import configuration from '@config/configuration';
 import { DatabaseModule } from '@database/database.module';
 import { CommonJwtModule } from '@common/jwt/jwt.module';
@@ -28,6 +29,7 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
       load: [configuration],
       envFilePath: '.env',
     }),
+    EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
