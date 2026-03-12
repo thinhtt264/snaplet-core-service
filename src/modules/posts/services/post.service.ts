@@ -17,7 +17,6 @@ import { PostRepository } from '../repositories/post.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
-import { StorageService } from '@infrastructure/storage/storage.service';
 import { ImageSizeKey } from '@common/types';
 
 @Injectable()
@@ -27,7 +26,6 @@ export class PostService {
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
-    private readonly storageService: StorageService,
   ) {}
 
   async getPostsFeed(

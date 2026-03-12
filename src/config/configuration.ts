@@ -59,7 +59,7 @@ export default () => ({
         process.env.RELATIONSHIPS_CACHE_TTL_SECONDS ||
           COMMON_CACHE_TTL_SECONDS.toString(),
         10,
-      ), // default: 3 days
+      ),
     },
   },
 

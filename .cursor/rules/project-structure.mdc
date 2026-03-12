@@ -1,0 +1,109 @@
+---
+description: High-level project structure and conventions for this NestJS service
+globs: **/*.ts
+alwaysApply: false
+---
+
+# Project Structure & Context
+
+This repository is a **NestJS + TypeScript backend** using **MongoDB (Mongoose)** and **Redis**, organized into feature-based modules under `src/modules`.
+
+## Core Entry Points
+
+- `main.ts`
+  - Bootstraps Nest app with `AppModule`.
+  - Enables CORS from `configService.get('cors.origin')`.
+  - Sets global API prefix from `configService.get('apiPrefix')`.
+  - Registers a global `ValidationPipe` with whitelist, forbidNonWhitelisted, and automatic transform.
+
+- `app.module.ts`
+  - Root module wiring infrastructure and feature modules:
+    - Config: `ConfigModule.forRoot` with `configuration.ts` and `.env`.
+    - Infra: `DatabaseModule`, `RedisModule`, `CacheModule`, `CommonJwtModule`, `ScheduleModule`, `ThrottlerModule`.
+    - Features: `AuthModule`, `UsersModule` (via other modules), `MediaModule`, `PostsModule`, `RelationshipsModule`, `HealthModule`.
+  - Global concerns:
+    - Guards: `FingerprintGuard` as `APP_GUARD`.
+    - Filters: `HttpExceptionFilter`, `DeviceRegistrationCleanupFilter`.
+    - Interceptors: `LoggingInterceptor`, `TransformInterceptor`.
+
+## Shared Infrastructure
+
+- `src/config/*`
+  - `configuration.ts` defines all config values (port, CORS, throttle, JWT, storage, DB).
+  - `validation.schema.ts` validates environment variables.
+  - **When adding new env-based behavior, extend `configuration.ts` and the validation schema instead of using `process.env` directly.**
+
+- `src/database/*`
+  - `database.module.ts` configures MongoDB/Mongoose.
+  - `abstract.schema.ts` defines `AbstractDocument` with common fields (`_id`, `createdAt`, `updatedAt`, `isDeleted`, etc.).
+  - All Mongoose schemas (`User`, `Post`, `Media`, `Relationship`, etc.) extend `AbstractDocument` and rely on timestamp/index conventions.
+
+- `src/common/*`
+  - `types/*`: generic types for API responses, pagination, images, MIME types, fingerprints, and request metadata.
+  - `utils/*`: helpers for dates, Redis keys/operations, fingerprints, and common logic.
+  - `constants/*`: regex patterns, Redis key templates, and other shared constants.
+  - `validators/*`: custom `class-validator` decorators (email, username, image MIME, etc.).
+  - `decorators/*`: `@CurrentUser`, header helpers, API response decorators.
+  - `guards/*`: JWT auth, device fingerprint, and device-daily-limit guards.
+  - `interceptors/*`: centralized logging and response transformation.
+  - `filters/*`: HTTP exception mapping and device-registration cleanup.
+  - `jwt/*`: shared JWT module and strategy.
+  - `redis/*`: Redis module/service and helpers.
+
+## Feature Modules (Domain Logic)
+
+Feature modules live under `src/modules`, following the pattern: **Controller → Service → Repository → Mongoose**.
+
+- `src/modules/auth`
+  - `auth.controller.ts`: registration, login, refresh token, username/email checks.
+  - `auth.service.ts`: auth logic, token generation, device/session rules.
+  - `repositories/refresh-token.repository.ts`: persistence for refresh tokens.
+  - `dto/*`: request DTOs for all auth flows.
+  - `interfaces/auth-response.interface.ts`: response contracts.
+
+- `src/modules/users`
+  - `users.controller.ts`: user profile and settings endpoints.
+  - `user.service.ts`: main user operations.
+  - `user-validation.service.ts`: username/email validation and checks.
+  - `user.repository.ts`: Mongo access for `User` and related documents.
+  - `schemas/user.schema.ts`, `user-fingerprint.schema.ts`: user and device fingerprint schemas.
+  - `dto/*` & `interfaces/*`: DTOs and shaped response types.
+
+- `src/modules/media`
+  - `media.controller.ts`: media upload/confirm/batch endpoints.
+  - `media.service.ts`: media lifecycle, integration with storage and cleanup.
+  - `media-cleanup.service.ts`: scheduled/background cleanup jobs.
+  - `media.repository.ts`: Mongo access for media.
+  - `schemas/media.schema.ts`: owner, mime type, key, duration, transforms, status.
+  - `dto/*`, `interfaces/*`: upload/confirm DTOs and repository/response contracts.
+  - Uses `StorageModule` and R2 storage (`infrastructure/storage/r2/*`).
+
+- `src/modules/posts`
+  - `post.controller.ts`: create post and fetch feed endpoints.
+  - `post.service.ts`: main posts business logic, integrates with `PostRepository`, `MediaService`, `RelationshipService`.
+  - `post.repository.ts`:
+    - Mongo aggregation for feed, joining users and media.
+    - **Cursor-based pagination uses a compound cursor on `createdAt` + `_id`**, encoded/decoded in `types/feed-cursor.types.ts`.
+  - `schemas/post.schema.ts`: post structure and indexes, including compound indexes on `{ userId, createdAt, _id }` to support feed queries.
+  - `dto/*`, `interfaces/*`: create/get posts DTOs and typed responses.
+
+- `src/modules/relationships`
+  - `relationship.controller.ts`: follow/unfollow and relationship queries.
+  - `relationship.service.ts`: managing relationships and friend visibility.
+  - `relationship.repository.ts`: Mongo access for relationships.
+  - `schemas/relationship.schema.ts`, `dto/*`, `interfaces/*`: schema, DTOs, response contracts.
+  - Used heavily by posts feed visibility logic (e.g., friend-only posts).
+
+- `src/modules/cache`
+  - `cache.module.ts`, `cache.service.ts`: caching helpers built on top of Redis.
+  - Includes utilities like pattern-based key invalidation and Redis `SCAN` loops.
+
+- `src/modules/health`
+  - Basic health checks for infrastructure (DB, Redis, etc.).
+
+## Conventions When Adding New Code
+
+- Prefer adding new domain logic as a **module under `src/modules`** with `Module`, `Controller`, `Service`, `Repository`, `schemas`, `dto`, and `interfaces`.
+- Reuse **common types, utils, validators, and decorators** where possible instead of duplicating logic.
+- For data access, follow the pattern: **Service → Repository → Mongoose model**; do not access Mongoose models directly from controllers.
+- For pagination and lists, prefer **cursor-based pagination** patterns already used in `PostsModule` (e.g., compound cursor on timestamp + `_id`) over offset-based pagination.
