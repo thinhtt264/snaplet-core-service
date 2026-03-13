@@ -5,12 +5,19 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
+const SSE_PATHS = ['/api/v1/posts/stream', '/api/v1/noti/stream'];
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
   // Security
-  app.use(helmet());
+  app.use((req, res, next) => {
+    if (SSE_PATHS.includes(req.path)) {
+      return next();
+    }
+    helmet()(req, res, next);
+  });
 
   // CORS
   const corsOrigin = configService.get<string[]>('cors.origin');

@@ -1,10 +1,8 @@
-import { Injectable, MessageEvent } from '@nestjs/common';
-import { RedisService } from '@common/redis/redis.service';
+import { Injectable, Logger, MessageEvent } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
-import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
+import { SseEventType } from '@common/constants/sse-event-type.constants';
 
 type PostsUpdatePayload = {
-  type: 'posts_update';
   seq: number;
   count: number;
 };
@@ -12,47 +10,75 @@ type PostsUpdatePayload = {
 @Injectable()
 export class PostSseService {
   private readonly connections = new Map<string, Subject<MessageEvent>>();
+  private readonly logger = new Logger(PostSseService.name);
 
-  constructor(private readonly redisService: RedisService) {}
+  // Per-connection TTL: 3 hours (in milliseconds)
+  private static readonly FORCE_RECONNECT_MS = 3 * 60 * 60 * 1000;
 
-  /**
-   * Establish SSE connection for a user.
-   * Handles onConnect and wires onDisconnect into the Observable lifecycle.
-   */
   connect(userId: string): Observable<MessageEvent> {
-    let subject = this.connections.get(userId);
-    if (!subject) {
-      subject = new Subject<MessageEvent>();
-      this.connections.set(userId, subject);
+    const old = this.connections.get(userId);
+    if (old) {
+      old.complete();
     }
 
-    // onConnect: reset session-scoped unread and seq counters for this user
-    void this.redisService.del([
-      `${REDIS_KEY_FEATURES.POSTS_SESSION_UNREAD}:${userId}`,
-      `${REDIS_KEY_FEATURES.POSTS_SESSION_SEQ}:${userId}`,
-    ]);
+    const subject = new Subject<MessageEvent>();
+    this.connections.set(userId, subject);
 
     return new Observable<MessageEvent>((subscriber) => {
+      const heartbeat = setInterval(() => {
+        try {
+          subscriber.next({
+            type: SseEventType.PING,
+            data: '',
+          } as MessageEvent);
+        } catch (err) {
+          this.logger.error(
+            `Failed to emit ping event for userId=${userId}`,
+            err instanceof Error ? err.stack : undefined,
+          );
+        }
+      }, 30_000);
+
+      const forceReconnectTimer = setTimeout(() => {
+        try {
+          subscriber.next({
+            type: SseEventType.POSTS_RECONNECT,
+            data: '',
+          } as MessageEvent);
+        } catch (err) {
+          this.logger.error(
+            `Failed to emit posts_reconnect event for userId=${userId}`,
+            err instanceof Error ? err.stack : undefined,
+          );
+        } finally {
+          subscriber.complete();
+        }
+      }, PostSseService.FORCE_RECONNECT_MS);
+
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        clearTimeout(forceReconnectTimer);
+      };
+
       const subscription = subject.subscribe(subscriber);
 
       return () => {
+        cleanup();
         subscription.unsubscribe();
-        this.handleDisconnect(userId);
+        this.handleDisconnect(userId, subject);
       };
     });
   }
 
-  /**
-   * Check if a user currently has an active SSE connection.
-   */
   hasConnection(userId: string): boolean {
     return this.connections.has(userId);
   }
 
-  /**
-   * Emit a posts_update event to a specific user if they are connected.
-   */
-  emitPostsUpdate(userId: string, payload: PostsUpdatePayload): void {
+  emitPostsUpdate(
+    userId: string,
+    type: SseEventType,
+    payload: PostsUpdatePayload,
+  ): void {
     const subject = this.connections.get(userId);
     if (!subject) {
       return;
@@ -60,23 +86,19 @@ export class PostSseService {
 
     subject.next({
       data: JSON.stringify(payload),
+      type,
     } as MessageEvent);
   }
 
-  /**
-   * Internal disconnect handler to clean up connection and Redis keys.
-   */
-  private handleDisconnect(userId: string): void {
-    const subject = this.connections.get(userId);
-    if (subject) {
+  private handleDisconnect(
+    userId: string,
+    subject: Subject<MessageEvent>,
+  ): void {
+    if (this.connections.get(userId) === subject) {
       subject.complete();
       this.connections.delete(userId);
-    }
 
-    // onDisconnect: reset session-scoped unread and seq counters
-    void this.redisService.del([
-      `${REDIS_KEY_FEATURES.POSTS_SESSION_UNREAD}:${userId}`,
-      `${REDIS_KEY_FEATURES.POSTS_SESSION_SEQ}:${userId}`,
-    ]);
+      this.logger.log(`SSE disconnected for /posts/stream userId=${userId}`);
+    }
   }
 }
