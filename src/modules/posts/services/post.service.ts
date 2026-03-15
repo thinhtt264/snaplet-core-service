@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Types } from 'mongoose';
 import {
   GetPostsResponse,
@@ -17,7 +18,16 @@ import { PostRepository } from '../repositories/post.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
+import { CacheService } from '@modules/cache/cache.service';
+import { RedisService } from '@common/redis/redis.service';
+import { buildRedisKey } from '@common/utils/redis.utils';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ImageSizeKey } from '@common/types';
+import { POST_CREATED_EVENT, PostCreatedEvent } from '../events/post-events';
+
+const POST_LAST_SEEN_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
+const POST_UNREAD_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
+const POST_SESSION_UNREAD_TTL_SECONDS = 3 * 24 * 60 * 60; // 3 days
 
 @Injectable()
 export class PostService {
@@ -26,6 +36,9 @@ export class PostService {
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
+    private readonly cacheService: CacheService,
+    private readonly redisService: RedisService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async getPostsFeed(
@@ -96,10 +109,131 @@ export class PostService {
       visibility: visibility ?? PostVisibility.FRIEND_ONLY,
     });
 
+    setImmediate(() => {
+      this.eventEmitter.emit(POST_CREATED_EVENT, {
+        authorId: userId,
+        postCreatedAt: post.createdAt,
+      } as PostCreatedEvent);
+    });
+
     return {
       id: post._id.toString(),
       createdAt: post.createdAt,
     };
+  }
+
+  /**
+   * GET /posts/unread-count
+   * 1. No last_seen key → return 0 (no DB)
+   * 2. getOrCompute: cache hit → return count; miss → query DB, set cache, return count
+   */
+  async unreadCount(userId: string): Promise<{ count: number }> {
+    const lastSeenRaw = await this.cacheService.get<string>(
+      REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+      userId,
+    );
+    if (!lastSeenRaw) {
+      return { count: 0 };
+    }
+
+    const count = await this.cacheService.getOrCompute(
+      REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
+      userId,
+      async () => {
+        const friendIds = await this.relationshipService.getMyFriendIds(userId);
+        const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
+        const lastSeenAt = new Date(lastSeenRaw);
+        return this.postRepository.countPostsByFriendCreatedAfter(
+          friendObjectIds,
+          lastSeenAt,
+        );
+      },
+      POST_UNREAD_CACHE_TTL_SECONDS,
+    );
+
+    return { count };
+  }
+
+  private getSessionUnreadKeys(userId: string): {
+    countKey: string;
+    seqKey: string;
+  } {
+    return {
+      countKey: buildRedisKey(
+        REDIS_KEY_FEATURES.POST_UNREAD_SESSION,
+        `${userId}:count`,
+      ),
+      seqKey: buildRedisKey(
+        REDIS_KEY_FEATURES.POST_UNREAD_SESSION,
+        `${userId}:seq`,
+      ),
+    };
+  }
+
+  /**
+   * Delete session unread keys for user (WS connect/reconnect and mark-seen).
+   */
+  async deleteSessionUnread(userId: string): Promise<void> {
+    const { countKey, seqKey } = this.getSessionUnreadKeys(userId);
+    await this.redisService.del([countKey, seqKey]);
+  }
+
+  /**
+   * Increment session unread count and seq atomically, TTL 3 days. Used when a friend creates a post (WS).
+   */
+  async incrSessionUnread(
+    userId: string,
+  ): Promise<{ count: number; seq: number }> {
+    const { countKey, seqKey } = this.getSessionUnreadKeys(userId);
+    const redis = this.redisService.getClient();
+    const multi = redis.multi();
+    multi.incr(countKey);
+    multi.incr(seqKey);
+    multi.expire(countKey, POST_SESSION_UNREAD_TTL_SECONDS);
+    multi.expire(seqKey, POST_SESSION_UNREAD_TTL_SECONDS);
+    const results = await multi.exec();
+    if (!results) {
+      return { count: 0, seq: 0 };
+    }
+    const count = Number(results[0]?.[1] ?? 0);
+    const seq = Number(results[1]?.[1] ?? 0);
+    return { count, seq };
+  }
+
+  /**
+   * POST /posts/mark-seen — respond 200 immediately, then setImmediate for keys.
+   */
+  markSeen(userId: string, lastSeenPostCreatedAt: string) {
+    setImmediate(() => this.applyMarkSeen(userId, lastSeenPostCreatedAt));
+  }
+
+  private async applyMarkSeen(
+    userId: string,
+    lastSeenPostCreatedAt: string,
+  ): Promise<void> {
+    const { countKey: sessionCountKey, seqKey: sessionSeqKey } =
+      this.getSessionUnreadKeys(userId);
+
+    const currentLastSeen = await this.cacheService.get<string>(
+      REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+      userId,
+    );
+
+    await Promise.all([
+      this.cacheService.set(
+        REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+        userId,
+        lastSeenPostCreatedAt,
+        POST_LAST_SEEN_TTL_SECONDS,
+      ),
+      this.redisService.del([sessionCountKey, sessionSeqKey]),
+      currentLastSeen !== lastSeenPostCreatedAt
+        ? this.cacheService.invalidate(
+            REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
+            userId,
+          )
+        : Promise.resolve(),
+    ]);
   }
 
   async deletePost(userId: string, postId: string): Promise<void> {

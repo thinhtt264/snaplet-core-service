@@ -3,6 +3,7 @@ import { APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import configuration from '@config/configuration';
 import { DatabaseModule } from '@database/database.module';
 import { CommonJwtModule } from '@common/jwt/jwt.module';
@@ -13,6 +14,8 @@ import { MediaModule } from '@modules/media/media.module';
 import { PostsModule } from '@modules/posts/posts.module';
 import { RelationshipsModule } from '@modules/relationships/relationships.module';
 import { AuthModule } from '@modules/auth/auth.module';
+import { SocketModule } from '@modules/socket/socket.module';
+import { DebugModule } from '@modules/debug/debug.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TransformInterceptor } from '@common/interceptors/transform.interceptor';
@@ -29,6 +32,7 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
       envFilePath: '.env',
     }),
     ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot(),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -51,6 +55,8 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
     MediaModule,
     PostsModule,
     RelationshipsModule,
+    SocketModule,
+    DebugModule,
   ],
   controllers: [AppController],
   providers: [

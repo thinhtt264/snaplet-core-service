@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { createRedisSocketIoAdapter } from '@modules/socket/redis-socket.io-adapter';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -34,6 +35,8 @@ async function bootstrap(): Promise<void> {
       },
     }),
   );
+
+  app.useWebSocketAdapter(createRedisSocketIoAdapter(app));
 
   const port = configService.get<number>('port') || 3000;
   await app.listen(port);

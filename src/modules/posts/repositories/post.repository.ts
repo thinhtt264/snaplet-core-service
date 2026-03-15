@@ -27,6 +27,21 @@ export class PostRepository implements IPostRepository {
   async findPostById(postId: Types.ObjectId): Promise<Post | null> {
     return this.postModel.findById(postId).exec();
   }
+
+  async countPostsByFriendCreatedAfter(
+    friendUserIds: Types.ObjectId[],
+    createdAtAfter: Date,
+  ): Promise<number> {
+    if (friendUserIds.length === 0) return 0;
+    return this.postModel
+      .countDocuments({
+        userId: { $in: friendUserIds },
+        createdAt: { $gt: createdAtAfter },
+        isDeleted: { $ne: true },
+      })
+      .exec();
+  }
+
   /**
    * Cursor-based pagination with optimized pipeline
    * Uses compound cursor (createdAt, _id) for stable pagination

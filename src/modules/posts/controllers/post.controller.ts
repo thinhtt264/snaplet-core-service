@@ -13,6 +13,7 @@ import {
 import { PostService } from '../services/post.service';
 import { GetPostsQueryDto } from '../dto/get-posts-query.dto';
 import { CreatePostDto } from '../dto/create-post.dto';
+import { MarkSeenDto } from '../dto/mark-seen.dto';
 import { GetPostsResponse } from '../interfaces/post-response.interface';
 import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -21,6 +22,19 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 export class PostController {
   constructor(private readonly postService: PostService) {}
+
+  @Get('unread-count')
+  async getUnreadCount(
+    @CurrentUserId() userId: string,
+  ): Promise<{ count: number }> {
+    return this.postService.unreadCount(userId);
+  }
+
+  @Post('mark-seen')
+  @HttpCode(HttpStatus.OK)
+  markSeen(@CurrentUserId() userId: string, @Body() dto: MarkSeenDto): void {
+    return this.postService.markSeen(userId, dto.lastSeenPostCreatedAt);
+  }
 
   @Get('feed')
   async getPostsFeed(
