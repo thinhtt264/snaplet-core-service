@@ -18,16 +18,18 @@ import { PostRepository } from '../repositories/post.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
-import { CacheService } from '@modules/cache/cache.service';
 import { RedisService } from '@common/redis/redis.service';
 import { buildRedisKey } from '@common/utils/redis.utils';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ImageSizeKey } from '@common/types';
 import { POST_CREATED_EVENT, PostCreatedEvent } from '../events/post-events';
-
-const POST_LAST_SEEN_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
-const POST_UNREAD_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
-const POST_SESSION_UNREAD_TTL_SECONDS = 3 * 24 * 60 * 60; // 3 days
+import {
+  POST_UNREAD_CACHE_TTL_SECONDS,
+  POST_UNREAD_COUNT_MAX,
+} from '../constants/post-unread.constants';
+import { PostUnreadService } from './post-unread.service';
+import { PostsUnreadQueueService } from '../queue/posts-unread.queue.service';
+import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
 
 @Injectable()
 export class PostService {
@@ -36,8 +38,9 @@ export class PostService {
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
-    private readonly cacheService: CacheService,
     private readonly redisService: RedisService,
+    private readonly postUnreadService: PostUnreadService,
+    private readonly postsUnreadQueueService: PostsUnreadQueueService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -91,9 +94,33 @@ export class PostService {
     }
   }
 
-  /**
-   * Create a new post
-   */
+  async getNewerFeed(
+    userId: string,
+    dto: GetNewerFeedDto,
+  ): Promise<PostResponse[]> {
+    const since = new Date(dto.since);
+    const limit = dto.limit ?? 1;
+
+    // Avoid pointless queries for future timestamps
+    if (since > new Date()) {
+      return [];
+    }
+
+    const friendIds = await this.relationshipService.getMyFriendIds(userId);
+    if (friendIds.length === 0) {
+      return [];
+    }
+
+    const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
+    const posts = await this.postRepository.findNewer({
+      friendIds: friendObjectIds,
+      since,
+      limit,
+    });
+
+    return this.transformPosts(posts, userId);
+  }
+
   async createPost(
     userId: string,
     mediaIds: string[],
@@ -122,118 +149,78 @@ export class PostService {
     };
   }
 
-  /**
-   * GET /posts/unread-count
-   * 1. No last_seen key → return 0 (no DB)
-   * 2. getOrCompute: cache hit → return count; miss → query DB, set cache, return count
-   */
   async unreadCount(userId: string): Promise<{ count: number }> {
-    const lastSeenRaw = await this.cacheService.get<string>(
-      REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+    const countKey = buildRedisKey(
+      REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
       userId,
+    );
+    const cachedCountRaw = await this.redisService.get(countKey);
+
+    if (cachedCountRaw !== null) {
+      const cachedCount = Number(cachedCountRaw);
+      if (Number.isNaN(cachedCount) || cachedCount < 0) {
+        await this.redisService.set(
+          countKey,
+          '0',
+          POST_UNREAD_CACHE_TTL_SECONDS,
+        );
+        return { count: 0 };
+      }
+
+      return { count: Math.min(cachedCount, POST_UNREAD_COUNT_MAX) };
+    }
+
+    const lastSeenRaw = await this.redisService.get(
+      buildRedisKey(REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE, userId),
     );
     if (!lastSeenRaw) {
       return { count: 0 };
     }
 
-    const count = await this.cacheService.getOrCompute(
-      REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
-      userId,
-      async () => {
-        const friendIds = await this.relationshipService.getMyFriendIds(userId);
-        const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
-        const lastSeenAt = new Date(lastSeenRaw);
-        return this.postRepository.countPostsByFriendCreatedAfter(
-          friendObjectIds,
-          lastSeenAt,
-        );
-      },
+    const lastSeenAt = new Date(lastSeenRaw);
+    if (Number.isNaN(lastSeenAt.getTime())) {
+      return { count: 0 };
+    }
+
+    const friendIds = await this.relationshipService.getMyFriendIds(userId);
+    const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
+    const count = await this.postRepository.countPostsByFriendCreatedAfter(
+      friendObjectIds,
+      lastSeenAt,
+      POST_UNREAD_COUNT_MAX,
+    );
+
+    await this.redisService.set(
+      countKey,
+      String(count),
       POST_UNREAD_CACHE_TTL_SECONDS,
     );
 
     return { count };
   }
 
-  private getSessionUnreadKeys(userId: string): {
-    countKey: string;
-    seqKey: string;
-  } {
-    return {
-      countKey: buildRedisKey(
-        REDIS_KEY_FEATURES.POST_UNREAD_SESSION,
-        `${userId}:count`,
-      ),
-      seqKey: buildRedisKey(
-        REDIS_KEY_FEATURES.POST_UNREAD_SESSION,
-        `${userId}:seq`,
-      ),
-    };
+  async handleUserConnected(userId: string, sessionId: string): Promise<void> {
+    await this.postUnreadService.handleUserConnected(userId, sessionId);
   }
 
   /**
-   * Delete session unread keys for user (WS connect/reconnect and mark-seen).
-   */
-  async deleteSessionUnread(userId: string): Promise<void> {
-    const { countKey, seqKey } = this.getSessionUnreadKeys(userId);
-    await this.redisService.del([countKey, seqKey]);
-  }
-
-  /**
-   * Increment session unread count and seq atomically, TTL 3 days. Used when a friend creates a post (WS).
+   * Increment unread count (global per user) and session seq (per session).
+   * Used when a friend creates a post (WS / debug).
    */
   async incrSessionUnread(
     userId: string,
   ): Promise<{ count: number; seq: number }> {
-    const { countKey, seqKey } = this.getSessionUnreadKeys(userId);
-    const redis = this.redisService.getClient();
-    const multi = redis.multi();
-    multi.incr(countKey);
-    multi.incr(seqKey);
-    multi.expire(countKey, POST_SESSION_UNREAD_TTL_SECONDS);
-    multi.expire(seqKey, POST_SESSION_UNREAD_TTL_SECONDS);
-    const results = await multi.exec();
-    if (!results) {
-      return { count: 0, seq: 0 };
-    }
-    const count = Number(results[0]?.[1] ?? 0);
-    const seq = Number(results[1]?.[1] ?? 0);
-    return { count, seq };
+    return this.postUnreadService.incrementUnreadForUser(userId);
   }
 
   /**
    * POST /posts/mark-seen — respond 200 immediately, then setImmediate for keys.
    */
   markSeen(userId: string, lastSeenPostCreatedAt: string) {
-    setImmediate(() => this.applyMarkSeen(userId, lastSeenPostCreatedAt));
-  }
-
-  private async applyMarkSeen(
-    userId: string,
-    lastSeenPostCreatedAt: string,
-  ): Promise<void> {
-    const { countKey: sessionCountKey, seqKey: sessionSeqKey } =
-      this.getSessionUnreadKeys(userId);
-
-    const currentLastSeen = await this.cacheService.get<string>(
-      REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+    void this.postsUnreadQueueService.enqueueMarkSeen(
       userId,
+      lastSeenPostCreatedAt,
     );
-
-    await Promise.all([
-      this.cacheService.set(
-        REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
-        userId,
-        lastSeenPostCreatedAt,
-        POST_LAST_SEEN_TTL_SECONDS,
-      ),
-      this.redisService.del([sessionCountKey, sessionSeqKey]),
-      currentLastSeen !== lastSeenPostCreatedAt
-        ? this.cacheService.invalidate(
-            REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
-            userId,
-          )
-        : Promise.resolve(),
-    ]);
   }
 
   async deletePost(userId: string, postId: string): Promise<void> {
@@ -249,6 +236,9 @@ export class PostService {
       }
 
       await this.postRepository.hardDeletePost(new Types.ObjectId(postId));
+      void this.postsUnreadQueueService.enqueuePostDeleted(
+        post.userId.toString(),
+      );
     } catch (error: any) {
       if (error instanceof HttpException) {
         throw error;

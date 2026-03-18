@@ -63,6 +63,7 @@ export interface IPostRepository {
   countPostsByFriendCreatedAfter(
     friendUserIds: Types.ObjectId[],
     createdAtAfter: Date,
+    max: number,
   ): Promise<number>;
   findPostsWithCursor(
     params: FindPostsWithCursorParams,

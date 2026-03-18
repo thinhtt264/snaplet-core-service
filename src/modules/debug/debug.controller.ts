@@ -9,8 +9,7 @@ import {
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { SocketService } from '@modules/socket/socket.service';
 import { PostService } from '@modules/posts/services/post.service';
-
-const NEW_POST_EVENT = 'new_post';
+import { POSTS_UNREAD_UPDATED_EVENT } from '@modules/socket/events/socket-events';
 const DEFAULT_DEBUG_USER_ID = '6965e21d1a259d10c7be1726'; // meo@gmail.com
 
 @Controller('debug')
@@ -22,7 +21,7 @@ export class DebugController {
   ) {}
 
   /**
-   * Emit new_post event to a user (for testing WS).
+   * Emit posts_unread_updated event to a user (for testing WS).
    * Default userId = meo@gmail.com. Incr session unread then emit.
    */
   @Post('emit-new-post')
@@ -32,7 +31,10 @@ export class DebugController {
   ): Promise<{ ok: boolean; userId: string; count: number; seq: number }> {
     const userId = body?.userId ?? DEFAULT_DEBUG_USER_ID;
     const { count, seq } = await this.postService.incrSessionUnread(userId);
-    this.socketService.emitToUser(userId, NEW_POST_EVENT, { count, seq });
+    this.socketService.emitToUser(userId, POSTS_UNREAD_UPDATED_EVENT, {
+      count,
+      seq,
+    });
     return { ok: true, userId, count, seq };
   }
 }

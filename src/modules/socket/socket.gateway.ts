@@ -6,11 +6,12 @@ import {
   OnGatewayInit,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SocketService } from './socket.service';
 import { SOCKET_USER_CONNECTED } from './events/socket-events';
+import type { UserConnectedEvent } from './events/socket-events';
 
 @WebSocketGateway({
   cors: {
@@ -38,19 +39,26 @@ export class SocketGateway
     this.server.use(this.createAuthMiddleware());
   }
 
-  async handleConnection(client: any): Promise<void> {
-    const userId = client.userId as string | undefined;
-    if (!userId) {
-      this.logger.warn('WS connection without userId, disconnecting');
+  handleConnection(client: Socket & { userId?: string }): void {
+    const userId = client.userId;
+    const sessionId = client.handshake?.auth?.sessionId;
+
+    if (!userId || !sessionId) {
+      this.logger.warn(
+        `WS connection missing auth info, disconnecting (userId=${userId}, sessionId=${sessionId})`,
+      );
       client.disconnect();
       return;
     }
 
     const room = this.socketService.getUserRoom(userId);
-    await client.join(room);
+    client.join(room);
 
     setImmediate(() => {
-      this.eventEmitter.emit(SOCKET_USER_CONNECTED, { userId });
+      this.eventEmitter.emit(SOCKET_USER_CONNECTED, {
+        userId,
+        sessionId,
+      } satisfies UserConnectedEvent);
     });
 
     this.logger.debug(`WS client connected, userId=${userId}`);
