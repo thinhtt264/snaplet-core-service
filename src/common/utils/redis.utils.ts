@@ -37,3 +37,13 @@ export function buildRedisKey(
 export function refreshTokenKey(userId: string): string {
   return `${REDIS_KEY_FEATURES.REFRESH_TOKEN}:${userId}`;
 }
+
+/**
+ * Redis key for a user's active auth session (access-token validity).
+ * Stored value: JSON stringified { authSessionId, deviceId }.
+ *
+ * One active session per user.
+ */
+export function authActiveSessionKey(userId: string): string {
+  return `${REDIS_KEY_FEATURES.AUTH_ACTIVE_SESSION}:${userId}`;
+}

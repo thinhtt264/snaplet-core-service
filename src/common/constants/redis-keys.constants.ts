@@ -8,6 +8,9 @@ export const REDIS_KEY_FEATURES = {
   RELATIONSHIPS: 'relationships', // Cache for relationships by status
   MY_FRIEND_IDS: 'my-friend-ids', // Cache for my accepted friend IDs (optimized for filtering)
   REFRESH_TOKEN: 'refresh-token',
+  // Active auth session used to invalidate old access tokens immediately
+  // (1 active auth session per user).
+  AUTH_ACTIVE_SESSION: 'auth_active_session',
   // Post unread (cache / session state)
   POST_UNREAD_LAST_SEEN_CACHE: 'post:last_seen_cache',
   POST_UNREAD_COUNT_CACHE: 'post:unread_count_cache',

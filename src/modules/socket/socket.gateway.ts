@@ -12,6 +12,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SocketService } from './socket.service';
 import { SOCKET_USER_CONNECTED } from './events/socket-events';
 import type { UserConnectedEvent } from './events/socket-events';
+import { RedisService } from '@common/redis/redis.service';
+import { authActiveSessionKey } from '@common/utils';
+import { ActiveAuthSession } from '@modules/auth/interfaces/active-auth-session.interface';
 
 @WebSocketGateway({
   cors: {
@@ -32,6 +35,7 @@ export class SocketGateway
     private readonly socketService: SocketService,
     private readonly jwtService: JwtService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly redis: RedisService,
   ) {}
 
   afterInit(): void {
@@ -81,10 +85,36 @@ export class SocketGateway
 
       try {
         const payload = await this.jwtService.verifyAsync(token);
-        if (!payload?.userId) {
+        const userId = payload?.userId;
+        const authSessionId = payload?.authSessionId;
+        const deviceId = payload?.deviceId;
+
+        if (!userId || !authSessionId || !deviceId) {
           return next(new Error('Invalid token payload'));
         }
-        socket.userId = payload.userId;
+
+        const activeSessionRaw = await this.redis.get(
+          authActiveSessionKey(userId),
+        );
+        if (!activeSessionRaw) {
+          return next(new Error('Unauthorized'));
+        }
+
+        let activeSession: ActiveAuthSession | null = null;
+        try {
+          activeSession = JSON.parse(activeSessionRaw);
+        } catch {
+          activeSession = null;
+        }
+
+        if (
+          !activeSession ||
+          activeSession.authSessionId !== authSessionId ||
+          activeSession.deviceId !== deviceId
+        ) {
+          return next(new Error('Unauthorized'));
+        }
+        socket.userId = userId;
         next();
       } catch {
         this.logger.warn('WS connection rejected: invalid token');

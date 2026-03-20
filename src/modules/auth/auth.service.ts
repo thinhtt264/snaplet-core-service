@@ -6,8 +6,8 @@ import * as bcrypt from 'bcrypt';
 import { UserService } from '../users/services/user.service';
 import { UserValidationService } from '../users/services/user-validation.service';
 import {
-  RefreshTokenRepository,
   StoredRefreshToken,
+  AuthRepository,
 } from './repositories/refresh-token.repository';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -24,10 +24,13 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly userService: UserService,
     private readonly userValidationService: UserValidationService,
-    private readonly refreshTokenRepository: RefreshTokenRepository,
+    private readonly authRepository: AuthRepository,
   ) {}
 
-  async register(registerDto: RegisterDto): Promise<any> {
+  async register(
+    registerDto: RegisterDto,
+    deviceId: string,
+  ): Promise<AuthResponse> {
     // Note: DeviceDailyLimitGuard already set the Redis key atomically
     // If user creation fails, DeviceRegistrationCleanupFilter will clear the key
     await this.userValidationService.validateUserUnique(
@@ -42,9 +45,20 @@ export class AuthService {
       password: registerDto.password,
     });
 
-    const accessToken = this.generateAccessToken(user._id.toString());
+    const userId = user._id.toString();
+    const authSessionId = this.createAuthSessionId();
+    await this.authRepository.setActiveAuthSession(
+      userId,
+      authSessionId,
+      deviceId,
+    );
+    const accessToken = this.generateAccessToken(
+      userId,
+      authSessionId,
+      deviceId,
+    );
     const refreshToken = this.createRefreshToken();
-    await this.saveRefreshToken(user._id.toString(), refreshToken);
+    await this.saveRefreshToken(userId, refreshToken);
 
     return {
       token: {
@@ -55,7 +69,7 @@ export class AuthService {
     };
   }
 
-  async login(loginDto: LoginDto): Promise<AuthResponse> {
+  async login(loginDto: LoginDto, deviceId: string): Promise<AuthResponse> {
     const user = await this.userValidationService.validateUser(
       loginDto.email,
       loginDto.password,
@@ -65,10 +79,21 @@ export class AuthService {
       throwInvalidCredentials();
     }
 
-    const accessToken = this.generateAccessToken(user._id.toString());
+    const userId = user._id.toString();
+    const authSessionId = this.createAuthSessionId();
+    await this.authRepository.setActiveAuthSession(
+      userId,
+      authSessionId,
+      deviceId,
+    );
+    const accessToken = this.generateAccessToken(
+      userId,
+      authSessionId,
+      deviceId,
+    );
     const refreshToken = this.createRefreshToken();
 
-    await this.saveRefreshToken(user._id.toString(), refreshToken);
+    await this.saveRefreshToken(userId, refreshToken);
 
     return {
       token: {
@@ -79,9 +104,15 @@ export class AuthService {
     };
   }
 
-  generateAccessToken(userId: string): string {
+  generateAccessToken(
+    userId: string,
+    authSessionId: string,
+    deviceId: string,
+  ): string {
     const payload = {
       userId,
+      authSessionId,
+      deviceId,
       iat: Math.floor(Date.now() / 1000),
     };
 
@@ -108,7 +139,7 @@ export class AuthService {
     token: string,
     userId: string,
   ): Promise<StoredRefreshToken | null> {
-    const tokenDoc = await this.refreshTokenRepository.findByUserId(userId);
+    const tokenDoc = await this.authRepository.findByUserId(userId);
 
     if (!tokenDoc) {
       return null;
@@ -122,27 +153,57 @@ export class AuthService {
     return randomUUID();
   }
 
+  private createAuthSessionId(): string {
+    return randomUUID();
+  }
+
   private async saveRefreshToken(
     userId: string,
     refreshToken: string,
   ): Promise<void> {
     const hashedToken = await this.hashToken(refreshToken);
-    await this.refreshTokenRepository.create(userId, hashedToken);
+    await this.authRepository.create(userId, hashedToken);
   }
 
   async refreshAccessToken(
     refreshToken: string,
     accessToken: string,
+    fingerprintDeviceId: string,
   ): Promise<RefreshTokenResponse> {
     let userId: string;
+    let accessAuthSessionId: string;
+    let accessDeviceId: string;
     try {
       const decoded = this.decodeToken(accessToken);
       userId = decoded?.userId;
-      if (!userId) {
+      accessAuthSessionId = decoded?.authSessionId;
+      accessDeviceId = decoded?.deviceId;
+      if (!userId || !accessAuthSessionId || !accessDeviceId) {
         throw new UnauthorizedException('Invalid access token');
       }
     } catch {
       throw new UnauthorizedException('Invalid or expired access token');
+    }
+
+    if (accessDeviceId !== fingerprintDeviceId) {
+      throw new UnauthorizedException('Invalid or expired access token');
+    }
+
+    // Access token must match the currently active auth session
+    const activeSession =
+      await this.authRepository.getActiveAuthSession(userId);
+
+    if (!activeSession) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    if (
+      activeSession.authSessionId !== accessAuthSessionId ||
+      activeSession.deviceId !== accessDeviceId
+    ) {
+      // Old device refresh must fail to support:
+      // API 401 -> refresh -> 401 -> force logout
+      throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
     const validToken = await this.findAndVerifyTokenByUserId(
@@ -154,17 +215,30 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
+    // Rotate auth session on refresh (Option B)
+    const newAuthSessionId = this.createAuthSessionId();
+    await this.authRepository.setActiveAuthSession(
+      userId,
+      newAuthSessionId,
+      accessDeviceId,
+    );
+
     const newRefreshToken = this.createRefreshToken();
     await this.saveRefreshToken(userId, newRefreshToken);
 
     return {
-      accessToken: this.generateAccessToken(userId),
+      accessToken: this.generateAccessToken(
+        userId,
+        newAuthSessionId,
+        accessDeviceId,
+      ),
       refreshToken: newRefreshToken,
     };
   }
 
   async logout(userId: string): Promise<void> {
-    await this.refreshTokenRepository.deleteByUserId(userId);
+    await this.authRepository.deleteActiveAuthSession(userId);
+    await this.authRepository.deleteByUserId(userId);
   }
 
   verifyJwtToken(token: string): any {
