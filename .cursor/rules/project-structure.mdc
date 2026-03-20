@@ -6,21 +6,24 @@ alwaysApply: false
 
 # Project Structure & Context
 
-This repository is a **NestJS + TypeScript backend** using **MongoDB (Mongoose)** and **Redis**, organized into feature-based modules under `src/modules`.
+This repository is a **NestJS + TypeScript backend** using **MongoDB (Mongoose)**, **Redis**, and **Socket.IO (WebSockets)**, organized into feature-based modules under `src/modules`.
 
 ## Core Entry Points
 
 - `main.ts`
-  - Bootstraps Nest app with `AppModule`.
-  - Enables CORS from `configService.get('cors.origin')`.
+  - Boots Nest app with `AppModule`.
+  - Security: `helmet()`.
+  - CORS from `configService.get('cors.origin')`.
   - Sets global API prefix from `configService.get('apiPrefix')`.
-  - Registers a global `ValidationPipe` with whitelist, forbidNonWhitelisted, and automatic transform.
+  - Registers a global `ValidationPipe` (whitelist, forbidNonWhitelisted, transform + implicit conversion).
+  - Configures WebSocket adapter via `createRedisSocketIoAdapter(app)`.
 
 - `app.module.ts`
-  - Root module wiring infrastructure and feature modules:
-    - Config: `ConfigModule.forRoot` with `configuration.ts` and `.env`.
-    - Infra: `DatabaseModule`, `RedisModule`, `CacheModule`, `CommonJwtModule`, `ScheduleModule`, `ThrottlerModule`.
-    - Features: `AuthModule`, `UsersModule` (via other modules), `MediaModule`, `PostsModule`, `RelationshipsModule`, `HealthModule`.
+  - Root module wiring infrastructure + feature modules:
+    - Config: `ConfigModule.forRoot` (loads `@config/configuration`, uses `.env`).
+    - Infra: `DatabaseModule`, `RedisModule`, `CacheModule`, `CommonJwtModule`.
+    - Cross-cutting: `ScheduleModule`, `ThrottlerModule`, `EventEmitterModule`.
+    - Features: `AuthModule`, `HealthModule`, `MediaModule`, `PostsModule`, `RelationshipsModule`, `SocketModule`.
   - Global concerns:
     - Guards: `FingerprintGuard` as `APP_GUARD`.
     - Filters: `HttpExceptionFilter`, `DeviceRegistrationCleanupFilter`.
@@ -46,20 +49,33 @@ This repository is a **NestJS + TypeScript backend** using **MongoDB (Mongoose)*
   - `decorators/*`: `@CurrentUser`, header helpers, API response decorators.
   - `guards/*`: JWT auth, device fingerprint, and device-daily-limit guards.
   - `interceptors/*`: centralized logging and response transformation.
-  - `filters/*`: HTTP exception mapping and device-registration cleanup.
+  - `filters/*`: `http-exception.filter.ts` and `device-registration-cleanup.filter.ts`.
   - `jwt/*`: shared JWT module and strategy.
   - `redis/*`: Redis module/service and helpers.
 
+- `src/infrastructure/*`
+  - External integrations shared across features.
+  - Currently `storage/*` (R2): encapsulates `storage.module.ts` / `storage.service.ts` and is imported by media-post related modules.
+
 ## Feature Modules (Domain Logic)
 
-Feature modules live under `src/modules`, following the pattern: **Controller → Service → Repository → Mongoose**.
+Feature modules live under `src/modules` and typically follow:
+- `*.module.ts`: Nest wiring + `MongooseModule.forFeature` for local schemas.
+- HTTP endpoints: `controllers/*`.
+- Business logic: `services/*`.
+- Persistence/DB access: `repositories/*` (when needed; controllers should not access Mongoose models directly).
+- Domain models: `schemas/*`.
+- Contracts: `dto/*` and `interfaces/*`.
+- Integrations: domain `events/*` + `listeners/*` (EventEmitter) and/or background `queue/*` + processors.
+
+Real-time note: WebSockets use `src/modules/socket/*` (gateway/service/events), not HTTP controllers.
 
 - `src/modules/auth`
-  - `auth.controller.ts`: registration, login, refresh token, username/email checks.
+  - `auth.controller.ts`: register/login/refresh token + username/email checks.
   - `auth.service.ts`: auth logic, token generation, device/session rules.
   - `repositories/refresh-token.repository.ts`: persistence for refresh tokens.
-  - `dto/*`: request DTOs for all auth flows.
-  - `interfaces/auth-response.interface.ts`: response contracts.
+  - `dto/*`: request DTOs for auth flows.
+  - `interfaces/*`: response contracts.
 
 - `src/modules/users`
   - `users.controller.ts`: user profile and settings endpoints.
@@ -70,27 +86,32 @@ Feature modules live under `src/modules`, following the pattern: **Controller �
   - `dto/*` & `interfaces/*`: DTOs and shaped response types.
 
 - `src/modules/media`
-  - `media.controller.ts`: media upload/confirm/batch endpoints.
+  - `media.module.ts`: wires media persistence + `StorageModule` for external storage.
+  - `controllers/media.controller.ts`: media upload/confirm/batch endpoints.
   - `media.service.ts`: media lifecycle, integration with storage and cleanup.
   - `media-cleanup.service.ts`: scheduled/background cleanup jobs.
-  - `media.repository.ts`: Mongo access for media.
+  - `repositories/media.repository.ts`: Mongo access for media.
   - `schemas/media.schema.ts`: owner, mime type, key, duration, transforms, status.
   - `dto/*`, `interfaces/*`: upload/confirm DTOs and repository/response contracts.
   - Uses `StorageModule` and R2 storage (`infrastructure/storage/r2/*`).
 
 - `src/modules/posts`
-  - `post.controller.ts`: create post and fetch feed endpoints.
-  - `post.service.ts`: main posts business logic, integrates with `PostRepository`, `MediaService`, `RelationshipService`.
-  - `post.repository.ts`:
+  - `posts.module.ts`: providers include `PostService`, unread services, and unread queue (service + processor).
+  - `controllers/post.controller.ts`: create post and fetch feed endpoints.
+  - `services/post.service.ts`: main posts business logic, integrates with `PostRepository`, `MediaService`, `RelationshipService`.
+  - `repositories/post.repository.ts`:
     - Mongo aggregation for feed, joining users and media.
     - **Cursor-based pagination uses a compound cursor on `createdAt` + `_id`**, encoded/decoded in `types/feed-cursor.types.ts`.
   - `schemas/post.schema.ts`: post structure and indexes, including compound indexes on `{ userId, createdAt, _id }` to support feed queries.
   - `dto/*`, `interfaces/*`: create/get posts DTOs and typed responses.
+  - `queue/*`: background processing for unread state updates (mark-seen, delete effects).
+  - `listeners/*` / `events/*`: hooks domain events into unread/session logic via EventEmitter.
 
 - `src/modules/relationships`
-  - `relationship.controller.ts`: follow/unfollow and relationship queries.
-  - `relationship.service.ts`: managing relationships and friend visibility.
-  - `relationship.repository.ts`: Mongo access for relationships.
+  - `relationships.module.ts`
+  - `controllers/relationship.controller.ts`: follow/unfollow and relationship queries.
+  - `services/relationship.service.ts`: managing relationships and friend visibility.
+  - `repositories/relationship.repository.ts`: Mongo access for relationships.
   - `schemas/relationship.schema.ts`, `dto/*`, `interfaces/*`: schema, DTOs, response contracts.
   - Used heavily by posts feed visibility logic (e.g., friend-only posts).
 
@@ -101,9 +122,22 @@ Feature modules live under `src/modules`, following the pattern: **Controller �
 - `src/modules/health`
   - Basic health checks for infrastructure (DB, Redis, etc.).
 
+- `src/modules/socket`
+  - `socket.module.ts`: global Socket.IO wiring (gateway/service exports).
+  - `socket.gateway.ts`: authenticates WS connections (token -> `userId`), joins per-user rooms, emits typed WS events on connect.
+  - `socket.service.ts`: manages the server instance and room mapping.
+  - `events/socket-events.ts`: socket event names and payload types.
+  - `redis-socket.io-adapter.ts`: Redis-backed Socket.IO adapter used by `main.ts`.
+
 ## Conventions When Adding New Code
 
-- Prefer adding new domain logic as a **module under `src/modules`** with `Module`, `Controller`, `Service`, `Repository`, `schemas`, `dto`, and `interfaces`.
+- Prefer adding new domain logic as a **module under `src/modules`** with:
+  - `*.module.ts`
+  - HTTP: `controllers/*`
+  - Real-time (if needed): `gateway` (e.g. `socket.gateway.ts`)
+  - `services/*`, optional `repositories/*`
+  - `schemas/*`, `dto/*`, and `interfaces/*`
 - Reuse **common types, utils, validators, and decorators** where possible instead of duplicating logic.
-- For data access, follow the pattern: **Service → Repository → Mongoose model**; do not access Mongoose models directly from controllers.
+- For data access, follow the pattern: **Service → Repository → Mongoose model**; do not access Mongoose models directly from controllers/gateways.
 - For pagination and lists, prefer **cursor-based pagination** patterns already used in `PostsModule` (e.g., compound cursor on timestamp + `_id`) over offset-based pagination.
+- For async/background work, prefer module-local `queue/*` + processors (e.g., `posts` unread queue) and use EventEmitter `events/*` + `listeners/*` for decoupled domain events.

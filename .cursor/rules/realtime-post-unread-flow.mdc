@@ -1,0 +1,175 @@
+---
+description: Realtime "post unread" flow (WS + Redis + BullMQ)
+globs: src/modules/{posts,socket}/**/*.ts
+alwaysApply: false
+---
+
+# Realtime Post Unread Flow
+
+Mục tiêu: Khi user kết nối WS và có thay đổi unread post (friend tạo/xóa/ user “mark-seen”), server cập nhật trạng thái trong Redis và phát realtime về đúng client qua Socket.IO event `posts_unread_updated`.
+
+## 1) State trong Redis (nguồn của realtime)
+
+Các Redis key feature liên quan:
+- `POST_SESSION_STATE` (hash): `post:session_state`
+  - Fields:
+    - `sessionId`
+    - `seq` (tăng dần mỗi lần có cập nhật liên quan unread trong phiên hiện tại)
+- `POST_UNREAD_COUNT_CACHE` (string): `post:unread_count_cache`
+  - Giá trị: unread count “global per user” (nhưng TTL + max cap)
+- `POST_UNREAD_LAST_SEEN_CACHE` (string): `post:last_seen_cache`
+  - Giá trị: `lastSeenPostCreatedAt` (ISO string) từ API mark-seen
+
+Hàm build key: `src/common/utils/redis.utils.ts` (`buildRedisKey()`), prefix theo:
+- `snaplet:{NODE_ENV}:{REDIS_CACHE_VERSION}:{feature}(:{extraValue})?`
+
+TTL / limit:
+- `POST_LAST_SEEN_TTL_SECONDS` = 14 ngày
+- `POST_UNREAD_CACHE_TTL_SECONDS` = 14 ngày
+- `POST_SESSION_STATE_TTL_SECONDS` = 7 ngày
+- `POST_UNREAD_COUNT_MAX` = 10
+
+Constants job event:
+- WS event: `POSTS_UNREAD_UPDATED_EVENT = 'posts_unread_updated'` (`src/modules/socket/events/socket-events.ts`)
+- Queue: `posts-unread` (`POSTS_UNREAD_QUEUE_NAME`)
+
+## 2) WS connect -> init/refresh session unread state
+
+Entry:
+- `src/modules/socket/socket.gateway.ts`
+  - `handleConnection(client)`:
+    - Yêu cầu `client.handshake.auth` có `token` (WS auth middleware verify JWT) và có `userId` (gán vào `socket.userId`).
+    - Read thêm `sessionId` từ `client.handshake.auth.sessionId`.
+    - `client.join(room)` với room: `user:{userId}`.
+    - Emits domain event (qua `EventEmitter2`):
+      - `SOCKET_USER_CONNECTED` với `{ userId, sessionId }`.
+
+Listener:
+- `src/modules/posts/listeners/user-connected.listener.ts`
+  - `@OnEvent(SOCKET_USER_CONNECTED)` -> gọi `PostService.handleUserConnected(userId, sessionId)`.
+
+Service:
+- `src/modules/posts/services/post.service.ts`
+  - `handleUserConnected()` -> `PostUnreadService.handleUserConnected()`.
+
+Redis init:
+- `src/modules/posts/services/post-unread.service.ts` -> `handleUserConnected(userId, sessionId)`
+  - `stateKey = POST_SESSION_STATE hash`
+  - Nếu `sessionId` hiện tại trong hash đã giống session mới:
+    - chỉ `expire(stateKey, POST_SESSION_STATE_TTL_SECONDS)` và return
+  - Nếu sessionId đổi:
+    - `hset(stateKey, sessionId, newSessionId)`
+    - `hset(stateKey, seq, 0)`
+    - set TTL cho hash
+
+## 3) Friend tạo post -> increment unread + emit realtime
+
+Post created emission:
+- `src/modules/posts/services/post.service.ts` (`createPost()`)
+  - Sau khi tạo post xong:
+    - `setImmediate(() => eventEmitter.emit(POST_CREATED_EVENT, { authorId, postCreatedAt }))`
+
+Listener/Queue:
+- `src/modules/posts/listeners/post-event.listener.ts`
+  - `@OnEvent(POST_CREATED_EVENT)` -> `PostsUnreadQueueService.enqueuePostCreated(authorId)`
+- `src/modules/posts/queue/posts-unread.queue.service.ts`
+  - Job: `post.unread.created` với payload `{ authorId }`
+
+Worker:
+- `src/modules/posts/queue/posts-unread.processor.ts`
+  - handle job `post.unread.created` -> `handleCreated()`
+  - `handleCreated(data)`:
+    - `friendIds = relationshipService.getMyFriendIds(data.authorId)`
+    - Với mỗi `friendId`:
+      - `const { count, seq } = postUnreadService.incrementUnreadForUser(friendId)`
+      - `socketService.emitToUser(friendId, POSTS_UNREAD_UPDATED_EVENT, { count, seq })`
+
+Redis increment:
+- `incrementUnreadForUser(userId)` (`src/modules/posts/services/post-unread.service.ts`)
+  - Đọc sessionId hiện có từ `POST_SESSION_STATE` hash
+  - Nếu chưa có sessionId thì return `{ count: 0, seq: 0 }`
+  - Multi exec:
+    - `incr(POST_UNREAD_COUNT_CACHE)` + `expire(countKey)`
+    - `hincrby(stateKey, seq, 1)` + `expire(stateKey)`
+
+Socket emit:
+- `src/modules/socket/socket.service.ts`
+  - Room mapping: `user:{userId}`
+  - `emitToUser(userId, event, payload)` -> `server.to(room).emit(event, payload)`
+
+## 4) Post bị xóa -> decrement unread + emit realtime
+
+Post delete:
+- `src/modules/posts/services/post.service.ts` (`deletePost()`)
+  - Sau khi `hardDeletePost()` thành công:
+    - enqueue job `post.unread.deleted` với payload `{ authorId: post.userId }`
+
+Worker:
+- `PostsUnreadProcessor.handleDeleted()`
+  - gọi `postUnreadService.applyPostDeleteSideEffects(authorId)`
+
+Redis side effects + emit:
+- `applyPostDeleteSideEffects(authorId)`:
+  - `friendIds = relationshipService.getMyFriendIds(authorId)`
+  - Với mỗi `friendId`:
+    - nếu không có `sessionId` trong `POST_SESSION_STATE` hash -> bỏ qua
+    - multi exec:
+      - `decr(countKey)` + `expire(countKey)`
+      - `hincrby(stateKey, seq, 1)` + `expire(stateKey)`
+    - nếu `count < 0` -> set lại `0`
+    - nếu `seq <= 0` -> return
+    - emit `{ count: Math.min(count, POST_UNREAD_COUNT_MAX), seq }`
+
+## 5) User “mark-seen” -> reset count + update last-seen + emit realtime
+
+HTTP API:
+- `src/modules/posts/controllers/post.controller.ts`
+  - `POST /posts/mark-seen`
+    - body: `MarkSeenDto` (`lastSeenPostCreatedAt`)
+    - gọi `postService.markSeen(userId, lastSeenPostCreatedAt)`
+
+Queue job:
+- `src/modules/posts/services/post.service.ts`
+  - `markSeen()` -> `postsUnreadQueueService.enqueueMarkSeen(userId, lastSeenPostCreatedAt)`
+- `src/modules/posts/queue/posts-unread.queue.service.ts`
+  - Job: `post.unread.mark-seen` với payload `{ userId, lastSeenPostCreatedAt }`
+
+Worker:
+- `PostsUnreadProcessor.handleMarkSeen()` -> `postUnreadService.applyMarkSeen(userId, lastSeenPostCreatedAt)`
+
+Redis update + emit:
+- `applyMarkSeen()` (`src/modules/posts/services/post-unread.service.ts`)
+  - Set `POST_UNREAD_LAST_SEEN_CACHE` cho user (TTL 14 ngày)
+  - Xử lý count:
+    - nếu không có sessionId trong hash -> set countKey = `0` (TTL 14 ngày) và return
+    - multi exec:
+      - `set(countKey, '0', EX=TTL)`
+      - `hincrby(stateKey, seq, 1)` + `expire(stateKey)`
+    - emit `{ count: 0, seq }`
+
+## 6) Read API: unread-count (fallback/consistency check)
+
+- `GET /posts/unread-count` (`src/modules/posts/controllers/post.controller.ts`)
+  - gọi `postService.unreadCount(userId)`
+
+Logic chính (`src/modules/posts/services/post.service.ts`):
+- nếu `POST_UNREAD_COUNT_CACHE` tồn tại và hợp lệ:
+  - return `min(cachedCount, POST_UNREAD_COUNT_MAX)`
+- nếu không có cached count:
+  - đọc `POST_UNREAD_LAST_SEEN_CACHE`:
+    - invalid/absent -> return `0`
+  - query DB:
+    - `relationshipService.getMyFriendIds(userId)`
+    - `postRepository.countPostsByFriendCreatedAfter(friendObjectIds, lastSeenAt, POST_UNREAD_COUNT_MAX)`
+  - set lại `POST_UNREAD_COUNT_CACHE` (TTL 14 ngày)
+
+## 7) Các entrypoint/file nên đọc khi thay đổi flow
+
+Khi agent cần sửa/extend realtime unread, nên bắt đầu từ:
+- `src/modules/socket/socket.gateway.ts` (WS auth + emit `SOCKET_USER_CONNECTED`)
+- `src/modules/posts/listeners/user-connected.listener.ts` + `post-unread.service.ts` (init session state)
+- `src/modules/posts/services/post.service.ts` (create/delete/markSeen entrypoints)
+- `src/modules/posts/listeners/post-event.listener.ts` (POST_CREATED_EVENT -> enqueue created job)
+- `src/modules/posts/queue/posts-unread.processor.ts` (worker: created/deleted/mark-seen -> emit WS)
+- `src/modules/socket/socket.service.ts` (room mapping + emit)
+
