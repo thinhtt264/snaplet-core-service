@@ -15,7 +15,6 @@ import { PostsModule } from '@modules/posts/posts.module';
 import { RelationshipsModule } from '@modules/relationships/relationships.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { SocketModule } from '@modules/socket/socket.module';
-import { DebugModule } from '@modules/debug/debug.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TransformInterceptor } from '@common/interceptors/transform.interceptor';
@@ -56,7 +55,6 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
     PostsModule,
     RelationshipsModule,
     SocketModule,
-    DebugModule,
   ],
   controllers: [AppController],
   providers: [

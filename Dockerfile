@@ -49,4 +49,5 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 4040
 
-CMD ["node", "dist/src/main.js"]
+# Nest build outputs `dist/main.js` (not `dist/src/main.js`)
+CMD ["node", "dist/main.js"]
