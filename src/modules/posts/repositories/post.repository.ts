@@ -8,6 +8,7 @@ import {
   FindPostsWithCursorResult,
 } from '../interfaces/post-repository.interface';
 import { FeedCursor } from '../types/feed-cursor.types';
+import { RawPostFromAggregation } from '../interfaces/post-repository.interface';
 
 @Injectable()
 export class PostRepository implements IPostRepository {
@@ -27,12 +28,31 @@ export class PostRepository implements IPostRepository {
   async findPostById(postId: Types.ObjectId): Promise<Post | null> {
     return this.postModel.findById(postId).exec();
   }
-  /**
-   * Cursor-based pagination with optimized pipeline
-   * Uses compound cursor (createdAt, _id) for stable pagination
-   * Join với users collection để lấy thông tin user
-   * Tận dụng index: userId, createdAt, _id
-   */
+
+  async countPostsByFriendCreatedAfter(
+    friendUserIds: Types.ObjectId[],
+    createdAtAfter: Date,
+    max: number,
+  ): Promise<number> {
+    if (friendUserIds.length === 0 || max < 1) return 0;
+    const limit = max + 1;
+    const result = await this.postModel
+      .aggregate<{ n: number }>([
+        {
+          $match: {
+            userId: { $in: friendUserIds },
+            createdAt: { $gt: createdAtAfter },
+            isDeleted: { $ne: true },
+          },
+        },
+        { $limit: limit },
+        { $count: 'n' },
+      ])
+      .exec();
+    const n = result[0]?.n ?? 0;
+    return Math.min(n, max);
+  }
+
   async findPostsWithCursor(
     params: FindPostsWithCursorParams,
   ): Promise<FindPostsWithCursorResult> {
@@ -61,6 +81,90 @@ export class PostRepository implements IPostRepository {
       hasNext,
       nextCursor,
     };
+  }
+
+  async findNewer(params: {
+    friendIds: Types.ObjectId[];
+    since: Date;
+    limit: number;
+  }): Promise<RawPostFromAggregation[]> {
+    const { friendIds, since, limit } = params;
+
+    if (friendIds.length === 0 || limit < 1) return [];
+
+    return this.postModel
+      .aggregate<RawPostFromAggregation>([
+        {
+          $match: {
+            userId: { $in: friendIds },
+            createdAt: { $gt: since }, // strictly greater than (avoid returning top item client already has)
+            isDeleted: { $ne: true },
+          },
+        },
+        { $sort: { createdAt: -1, _id: -1 } },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'userId',
+            foreignField: '_id',
+            as: 'user',
+            pipeline: [
+              {
+                $project: {
+                  username: 1,
+                  firstName: 1,
+                  lastName: 1,
+                  avatarKey: 1,
+                },
+              },
+            ],
+          },
+        },
+        { $unwind: '$user' },
+        {
+          $lookup: {
+            from: 'media',
+            localField: 'mediaIds',
+            foreignField: '_id',
+            as: 'media',
+            pipeline: [
+              {
+                $match: {
+                  isDeleted: { $ne: true },
+                  status: 'READY',
+                },
+              },
+              {
+                $project: {
+                  _id: 1,
+                  ownerId: 1,
+                  mimeType: 1,
+                  mediaKey: 1,
+                  duration: 1,
+                  transform: 1,
+                  status: 1,
+                  createdAt: 1,
+                  updatedAt: 1,
+                },
+              },
+              { $sort: { createdAt: 1 } },
+            ],
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            userId: 1,
+            caption: 1,
+            visibility: 1,
+            createdAt: 1,
+            user: 1,
+            media: 1,
+          },
+        },
+      ])
+      .exec();
   }
 
   /**

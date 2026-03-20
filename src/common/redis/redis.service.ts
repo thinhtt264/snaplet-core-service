@@ -133,6 +133,53 @@ export class RedisService implements OnModuleDestroy {
   }
 
   /**
+   * Scan and return keys matching a pattern.
+   */
+  async scanKeys(pattern: string): Promise<string[]> {
+    return this.safeExecute(
+      async () => {
+        const keys: string[] = [];
+        let cursor = '0';
+
+        do {
+          const [nextCursor, batch] = await this.redis.scan(
+            cursor,
+            'MATCH',
+            pattern,
+            'COUNT',
+            100,
+          );
+          cursor = nextCursor;
+          if (batch.length) {
+            keys.push(...batch);
+          }
+        } while (cursor !== '0');
+
+        return keys;
+      },
+      [],
+      'scanKeys',
+    );
+  }
+
+  /**
+   * Delete all keys matching a pattern.
+   */
+  async deleteByPattern(pattern: string): Promise<number> {
+    return this.safeExecute(
+      async () => {
+        const keys = await this.scanKeys(pattern);
+        if (!keys.length) {
+          return 0;
+        }
+        return this.del(keys);
+      },
+      0,
+      'deleteByPattern',
+    );
+  }
+
+  /**
    * Check if key exists
    * Returns 0 if Redis is unavailable
    */
@@ -162,6 +209,120 @@ export class RedisService implements OnModuleDestroy {
    */
   async incr(key: string): Promise<number> {
     return this.safeExecute(() => this.redis.incr(key), 0, 'incr');
+  }
+
+  /**
+   * Decrement value by key.
+   * Returns 0 if Redis is unavailable.
+   */
+  async decr(key: string): Promise<number> {
+    return this.safeExecute(() => this.redis.decr(key), 0, 'decr');
+  }
+
+  /**
+   * Get hash field value.
+   * Returns null if Redis is unavailable or field doesn't exist.
+   */
+  async hget(key: string, field: string): Promise<string | null> {
+    return this.safeExecute(() => this.redis.hget(key, field), null, 'hget');
+  }
+
+  /**
+   * Set hash field value.
+   * Returns 0 if Redis is unavailable.
+   */
+  async hset(key: string, field: string, value: string): Promise<number> {
+    return this.safeExecute(
+      () => this.redis.hset(key, field, value),
+      0,
+      'hset',
+    );
+  }
+
+  /**
+   * Increment hash field by value.
+   * Returns 0 if Redis is unavailable.
+   */
+  async hincrby(
+    key: string,
+    field: string,
+    increment: number,
+  ): Promise<number> {
+    return this.safeExecute(
+      () => this.redis.hincrby(key, field, increment),
+      0,
+      'hincrby',
+    );
+  }
+
+  /**
+   * Execute a Redis multi block with shared safeExecute handling.
+   * The callback is responsible for building commands and calling `exec()`.
+   */
+  async multiExec<T>(
+    operation: (multi: ReturnType<Redis['multi']>) => Promise<T>,
+    defaultValue: T,
+    operationName: string,
+  ): Promise<T> {
+    return this.safeExecute(
+      async () => operation(this.redis.multi()),
+      defaultValue,
+      operationName,
+    );
+  }
+
+  async multiSetWithExpire(
+    entries: Array<{
+      key: string;
+      value: string;
+      expirationSeconds: number;
+    }>,
+  ): Promise<void> {
+    if (!entries.length) return;
+
+    await this.safeExecute(
+      async () => {
+        const multi = this.redis.multi();
+        for (const entry of entries) {
+          multi.set(entry.key, entry.value, 'EX', entry.expirationSeconds);
+        }
+        await multi.exec();
+      },
+      undefined,
+      'multiSetWithExpire',
+    );
+  }
+
+  async multiIncrWithExpire(
+    entries: Array<{
+      key: string;
+      expirationSeconds: number;
+    }>,
+  ): Promise<number[]> {
+    if (!entries.length) return [];
+
+    return this.safeExecute(
+      async () => {
+        const multi = this.redis.multi();
+        for (const entry of entries) {
+          multi.incr(entry.key);
+          multi.expire(entry.key, entry.expirationSeconds);
+        }
+        const results = await multi.exec();
+        if (!results) {
+          return entries.map(() => 0);
+        }
+
+        // Với mỗi entry ta có 2 lệnh (incr, expire) → lấy kết quả ở các index chẵn
+        const values: number[] = [];
+        for (let i = 0; i < results.length; i += 2) {
+          values.push(Number(results[i]?.[1] ?? 0));
+        }
+        return values;
+      },
+      entries.map(() => 0),
+      'multiIncrWithExpire',
+    );
   }
 
   /**

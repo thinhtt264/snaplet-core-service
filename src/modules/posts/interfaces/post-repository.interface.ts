@@ -60,6 +60,11 @@ export interface FindPostsWithCursorResult {
 
 export interface IPostRepository {
   create(post: Partial<Post>): Promise<Post>;
+  countPostsByFriendCreatedAfter(
+    friendUserIds: Types.ObjectId[],
+    createdAtAfter: Date,
+    max: number,
+  ): Promise<number>;
   findPostsWithCursor(
     params: FindPostsWithCursorParams,
   ): Promise<FindPostsWithCursorResult>;

@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Types } from 'mongoose';
 import {
   GetPostsResponse,
@@ -17,7 +18,18 @@ import { PostRepository } from '../repositories/post.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
+import { RedisService } from '@common/redis/redis.service';
+import { buildRedisKey } from '@common/utils/redis.utils';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ImageSizeKey } from '@common/types';
+import { POST_CREATED_EVENT, PostCreatedEvent } from '../events/post-events';
+import {
+  POST_UNREAD_CACHE_TTL_SECONDS,
+  POST_UNREAD_COUNT_MAX,
+} from '../constants/post-unread.constants';
+import { PostUnreadService } from './post-unread.service';
+import { PostsUnreadQueueService } from '../queue/posts-unread.queue.service';
+import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
 
 @Injectable()
 export class PostService {
@@ -26,6 +38,10 @@ export class PostService {
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
+    private readonly redisService: RedisService,
+    private readonly postUnreadService: PostUnreadService,
+    private readonly postsUnreadQueueService: PostsUnreadQueueService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async getPostsFeed(
@@ -78,9 +94,33 @@ export class PostService {
     }
   }
 
-  /**
-   * Create a new post
-   */
+  async getNewerFeed(
+    userId: string,
+    dto: GetNewerFeedDto,
+  ): Promise<PostResponse[]> {
+    const since = new Date(dto.since);
+    const limit = dto.limit ?? 1;
+
+    // Avoid pointless queries for future timestamps
+    if (since > new Date()) {
+      return [];
+    }
+
+    const friendIds = await this.relationshipService.getMyFriendIds(userId);
+    if (friendIds.length === 0) {
+      return [];
+    }
+
+    const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
+    const posts = await this.postRepository.findNewer({
+      friendIds: friendObjectIds,
+      since,
+      limit,
+    });
+
+    return this.transformPosts(posts, userId);
+  }
+
   async createPost(
     userId: string,
     mediaIds: string[],
@@ -96,10 +136,91 @@ export class PostService {
       visibility: visibility ?? PostVisibility.FRIEND_ONLY,
     });
 
+    setImmediate(() => {
+      this.eventEmitter.emit(POST_CREATED_EVENT, {
+        authorId: userId,
+        postCreatedAt: post.createdAt,
+      } as PostCreatedEvent);
+    });
+
     return {
       id: post._id.toString(),
       createdAt: post.createdAt,
     };
+  }
+
+  async unreadCount(userId: string): Promise<{ count: number }> {
+    const countKey = buildRedisKey(
+      REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
+      userId,
+    );
+    const cachedCountRaw = await this.redisService.get(countKey);
+
+    if (cachedCountRaw !== null) {
+      const cachedCount = Number(cachedCountRaw);
+      if (Number.isNaN(cachedCount) || cachedCount < 0) {
+        await this.redisService.set(
+          countKey,
+          '0',
+          POST_UNREAD_CACHE_TTL_SECONDS,
+        );
+        return { count: 0 };
+      }
+
+      return { count: Math.min(cachedCount, POST_UNREAD_COUNT_MAX) };
+    }
+
+    const lastSeenRaw = await this.redisService.get(
+      buildRedisKey(REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE, userId),
+    );
+    if (!lastSeenRaw) {
+      return { count: 0 };
+    }
+
+    const lastSeenAt = new Date(lastSeenRaw);
+    if (Number.isNaN(lastSeenAt.getTime())) {
+      return { count: 0 };
+    }
+
+    const friendIds = await this.relationshipService.getMyFriendIds(userId);
+    const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
+    const count = await this.postRepository.countPostsByFriendCreatedAfter(
+      friendObjectIds,
+      lastSeenAt,
+      POST_UNREAD_COUNT_MAX,
+    );
+
+    await this.redisService.set(
+      countKey,
+      String(count),
+      POST_UNREAD_CACHE_TTL_SECONDS,
+    );
+
+    return { count };
+  }
+
+  async handleUserConnected(userId: string, sessionId: string): Promise<void> {
+    await this.postUnreadService.handleUserConnected(userId, sessionId);
+  }
+
+  /**
+   * Increment unread count (global per user) and session seq (per session).
+   * Used when a friend creates a post (WS / debug).
+   */
+  async incrSessionUnread(
+    userId: string,
+  ): Promise<{ count: number; seq: number }> {
+    return this.postUnreadService.incrementUnreadForUser(userId);
+  }
+
+  /**
+   * POST /posts/mark-seen — respond 200 immediately, then setImmediate for keys.
+   */
+  markSeen(userId: string, lastSeenPostCreatedAt: string) {
+    void this.postsUnreadQueueService.enqueueMarkSeen(
+      userId,
+      lastSeenPostCreatedAt,
+    );
   }
 
   async deletePost(userId: string, postId: string): Promise<void> {
@@ -115,6 +236,9 @@ export class PostService {
       }
 
       await this.postRepository.hardDeletePost(new Types.ObjectId(postId));
+      void this.postsUnreadQueueService.enqueuePostDeleted(
+        post.userId.toString(),
+      );
     } catch (error: any) {
       if (error instanceof HttpException) {
         throw error;
