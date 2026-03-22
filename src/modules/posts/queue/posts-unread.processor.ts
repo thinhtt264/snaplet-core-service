@@ -4,6 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Worker, type Job } from 'bullmq';
 import { RedisService } from '@common/redis/redis.service';
 import { SocketService } from '@modules/socket/socket.service';
@@ -30,6 +31,7 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
     private readonly relationshipService: RelationshipService,
     private readonly postUnreadService: PostUnreadService,
     private readonly socketService: SocketService,
@@ -38,12 +40,34 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
+    const drainDelaySeconds = this.configService.get<number>(
+      'postsUnread.worker.drainDelaySeconds',
+    );
+    const lockDurationMs = this.configService.get<number>(
+      'postsUnread.worker.lockDurationMs',
+    );
+    const stalledIntervalMs = this.configService.get<number>(
+      'postsUnread.worker.stalledIntervalMs',
+    );
+
     this.worker = new Worker(
       POSTS_UNREAD_QUEUE_NAME,
       async (job: Job) => this.processJob(job),
       {
         connection: this.connection,
         concurrency: 5,
+        drainDelay:
+          typeof drainDelaySeconds === 'number' && drainDelaySeconds > 0
+            ? drainDelaySeconds
+            : undefined,
+        lockDuration:
+          typeof lockDurationMs === 'number' && lockDurationMs > 0
+            ? lockDurationMs
+            : undefined,
+        stalledInterval:
+          typeof stalledIntervalMs === 'number' && stalledIntervalMs > 0
+            ? stalledIntervalMs
+            : undefined,
       },
     );
 

@@ -63,6 +63,29 @@ export default () => ({
     },
   },
 
+  /**
+   * BullMQ Worker (posts-unread): defaults favor fewer Redis round-trips when idle.
+   * drainDelay: seconds between empty-queue polls. lockDuration / stalledInterval: ms.
+   */
+  postsUnread: {
+    worker: {
+      drainDelaySeconds: parseInt(
+        process.env.POSTS_UNREAD_WORKER_DRAIN_DELAY_SECONDS || String(30 * 60),
+        30,
+      ),
+      lockDurationMs: parseInt(
+        process.env.POSTS_UNREAD_WORKER_LOCK_DURATION_MS ||
+          String(10 * 60 * 1000),
+        30,
+      ),
+      stalledIntervalMs: parseInt(
+        process.env.POSTS_UNREAD_WORKER_STALLED_INTERVAL_MS ||
+          String(5 * 60 * 1000),
+        15,
+      ),
+    },
+  },
+
   r2: {
     accountId: process.env.R2_ACCOUNT_ID || '',
     accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
