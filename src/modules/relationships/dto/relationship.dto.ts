@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsArray,
   ArrayMinSize,
+  IsMongoId,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { RelationshipStatus } from '../schemas/relationship.schema';
@@ -11,13 +12,22 @@ import { RelationshipStatus } from '../schemas/relationship.schema';
 export class CreateRelationshipDto {
   @IsNotEmpty({ message: 'Target User ID is required' })
   @IsString({ message: 'Target User ID must be a string' })
+  @IsMongoId({ message: 'Target User ID must be a valid MongoDB ObjectId' })
   targetUserId: string;
 }
 
 export class GetRelationshipWithUserDto {
   @IsNotEmpty({ message: 'Target User ID is required' })
   @IsString({ message: 'Target User ID must be a string' })
+  @IsMongoId({ message: 'Target User ID must be a valid MongoDB ObjectId' })
   targetUserId: string;
+}
+
+export class RelationshipIdParamDto {
+  @IsNotEmpty({ message: 'Relationship ID is required' })
+  @IsString({ message: 'Relationship ID must be a string' })
+  @IsMongoId({ message: 'Relationship ID must be a valid MongoDB ObjectId' })
+  relationshipId: string;
 }
 
 export class RelationshipStatusDto {

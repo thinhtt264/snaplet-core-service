@@ -62,18 +62,10 @@ export class AuthController {
 
   @Get('verify-token')
   verifyToken(@AccessToken() token: string) {
-    try {
-      const payload = this.authService.verifyJwtToken(token);
-      return {
-        success: true,
-        data: payload,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Invalid or expired token',
-        error: error.message,
-      };
-    }
+    const payload = this.authService.verifyJwtToken(token);
+    return {
+      success: true,
+      data: payload,
+    };
   }
 }

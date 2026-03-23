@@ -252,8 +252,12 @@ export class AuthService {
   }
 
   verifyJwtToken(token: string): any {
-    const secret = this.configService.get<string>('jwt.secret');
-    return this.jwtService.verify(token, { secret });
+    try {
+      const secret = this.configService.get<string>('jwt.secret');
+      return this.jwtService.verify(token, { secret });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired access token');
+    }
   }
 
   decodeToken(token: string): any {

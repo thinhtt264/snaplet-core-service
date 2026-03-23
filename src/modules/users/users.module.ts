@@ -9,7 +9,6 @@ import { UserService } from './services/user.service';
 import { UserValidationService } from './services/user-validation.service';
 import { UserRepository } from './repositories/user.repository';
 import { UsersController } from './controllers/users.controller';
-import { RedisService } from '@common/redis';
 import { StorageModule } from '@infrastructure/storage/storage.module';
 
 @Module({
@@ -21,7 +20,7 @@ import { StorageModule } from '@infrastructure/storage/storage.module';
     StorageModule,
   ],
   controllers: [UsersController],
-  providers: [UserService, UserValidationService, UserRepository, RedisService],
+  providers: [UserService, UserValidationService, UserRepository],
   exports: [UserService, UserValidationService],
 })
 export class UsersModule {}

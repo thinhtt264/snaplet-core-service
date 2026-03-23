@@ -18,6 +18,7 @@ import {
   CreateRelationshipDto,
   GetRelationshipWithUserDto,
   GetRelationshipsByStatusQueryDto,
+  RelationshipIdParamDto,
   RelationshipStatusDto,
 } from '../dto/relationship.dto';
 import {
@@ -102,18 +103,22 @@ export class RelationshipController {
   @HttpCode(HttpStatus.OK)
   async update(
     @CurrentUserId() userId: string,
-    @Param('relationshipId') relationshipId: string,
+    @Param() params: RelationshipIdParamDto,
     @Body() body: RelationshipStatusDto,
   ): Promise<RelationshipResponse> {
-    return this.relationshipService.update(userId, relationshipId, body.status);
+    return this.relationshipService.update(
+      userId,
+      params.relationshipId,
+      body.status,
+    );
   }
 
   @Delete(':relationshipId')
   @HttpCode(HttpStatus.OK)
   async delete(
     @CurrentUserId() userId: string,
-    @Param('relationshipId') relationshipId: string,
+    @Param() params: RelationshipIdParamDto,
   ): Promise<void> {
-    return this.relationshipService.delete(userId, relationshipId);
+    return this.relationshipService.delete(userId, params.relationshipId);
   }
 }

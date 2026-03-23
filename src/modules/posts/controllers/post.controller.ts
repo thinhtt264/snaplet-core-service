@@ -14,6 +14,7 @@ import { PostService } from '../services/post.service';
 import { GetPostsQueryDto } from '../dto/get-posts-query.dto';
 import { CreatePostDto } from '../dto/create-post.dto';
 import { MarkSeenDto } from '../dto/mark-seen.dto';
+import { DeletePostParamDto } from '../dto/delete-post-param.dto';
 import {
   GetPostsResponse,
   PostResponse,
@@ -80,8 +81,8 @@ export class PostController {
   @HttpCode(HttpStatus.OK)
   async deletePost(
     @CurrentUserId() userId: string,
-    @Param('postId') postId: string,
+    @Param() params: DeletePostParamDto,
   ): Promise<void> {
-    return await this.postService.deletePost(userId, postId);
+    return await this.postService.deletePost(userId, params.postId);
   }
 }

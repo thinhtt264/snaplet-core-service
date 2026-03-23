@@ -1,5 +1,6 @@
 import {
   Injectable,
+  HttpException,
   InternalServerErrorException,
   ConflictException,
   BadRequestException,
@@ -304,11 +305,16 @@ export class RelationshipService {
         updatedAt: relationship.updatedAt,
       };
     } catch (error) {
-      // Re-throw BadRequestException if it's from checkTargetUserExists
-      if (error instanceof BadRequestException) {
+      if (error instanceof HttpException) {
         throw error;
       }
-      throw new ConflictException('Create relationship failed');
+
+      const mongoCode = (error as { code?: number })?.code;
+      if (mongoCode === 11000) {
+        throw new ConflictException('Relationship already exists');
+      }
+
+      throw new InternalServerErrorException('Failed to create relationship');
     }
   }
 

@@ -9,7 +9,7 @@ metadata:
 
 # NestJS Best Practices
 
-Comprehensive best practices guide for NestJS applications. Contains 40 rules across 10 categories, prioritized by impact to guide automated refactoring and code generation.
+Comprehensive best practices guide for NestJS applications. Contains 41 rules across 10 categories, prioritized by impact to guide automated refactoring and code generation.
 
 ## When to Apply
 
@@ -93,6 +93,7 @@ Reference these guidelines when:
 ### 8. API Design (MEDIUM)
 
 - `api-use-dto-serialization` - DTO and response serialization
+- `api-use-response-interfaces` - Define explicit response interfaces in controllers
 - `api-use-interceptors` - Cross-cutting concerns
 - `api-versioning` - API versioning strategies
 - `api-use-pipes` - Input transformation with pipes
