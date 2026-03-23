@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
@@ -237,8 +241,14 @@ export class AuthService {
   }
 
   async logout(userId: string): Promise<void> {
-    await this.authRepository.deleteActiveAuthSession(userId);
-    await this.authRepository.deleteByUserId(userId);
+    try {
+      await Promise.all([
+        this.authRepository.deleteActiveAuthSession(userId),
+        this.authRepository.deleteByUserId(userId),
+      ]);
+    } catch {
+      throw new InternalServerErrorException('Failed to logout');
+    }
   }
 
   verifyJwtToken(token: string): any {
