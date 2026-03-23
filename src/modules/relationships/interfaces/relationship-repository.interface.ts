@@ -58,15 +58,10 @@ export interface IRelationshipRepository {
   ): Promise<Relationship | null>;
 
   /**
-   * Count relationships for a user by status
-   * @param userId - User ID to count
-   * @param status - Optional status filter
-   * @returns Count of relationships
+   * Pending relationships where this user participates but is not the initiator
+   * (requests waiting for this user to accept).
    */
-  countRelationshipsByStatus(
-    userId: Types.ObjectId,
-    status?: RelationshipStatus,
-  ): Promise<number>;
+  countPendingAwaitingUserAccept(userId: Types.ObjectId): Promise<number>;
 
   /**
    * Count relationships for multiple users in a single query

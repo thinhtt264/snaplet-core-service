@@ -21,6 +21,7 @@ import {
   RelationshipStatusDto,
 } from '../dto/relationship.dto';
 import {
+  RelationshipCountResponse,
   RelationshipResponse,
   RelationshipWithOtherUserResponse,
 } from '../interfaces/relationship-resonse.interface';
@@ -36,19 +37,18 @@ export class RelationshipController {
   constructor(private readonly relationshipService: RelationshipService) {}
 
   /**
-   * Get current user's friend count (accepted relationships).
-   * Reuses Redis cache from getMyFriendIds.
+   * Accepted friend count and incoming pending friend-request count.
+   * Friends: MY_FRIEND_IDS cache; pending: RELATIONSHIPS with incoming-only suffix.
    *
-   * @example GET /relationships/friends/count
-   * @returns { count: number }
+   * @example GET /relationships/count
+   * @returns RelationshipCountResponse
    */
-  @Get('/friends/count')
+  @Get('/count')
   @HttpCode(HttpStatus.OK)
-  async getMyFriendCount(
+  async getRelationshipCount(
     @CurrentUserId() userId: string,
-  ): Promise<{ count: number }> {
-    const count = await this.relationshipService.getMyFriendCount(userId);
-    return { count };
+  ): Promise<RelationshipCountResponse> {
+    return this.relationshipService.getRelationshipCount(userId);
   }
 
   /**

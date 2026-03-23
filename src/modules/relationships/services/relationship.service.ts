@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { RelationshipRepository } from '../repositories/relationship.repository';
 import { RelationshipStatus } from '../schemas/relationship.schema';
 import {
+  RelationshipCountResponse,
   RelationshipResponse,
   RelationshipWithOtherUserResponse,
 } from '../interfaces/relationship-resonse.interface';
@@ -55,6 +56,14 @@ export class RelationshipService {
    */
   private buildMyFriendIdsCacheKeySuffix(userId: string): string {
     return userId;
+  }
+
+  /**
+   * Cache suffix for incoming pending request count (recipient-only), under RELATIONSHIPS feature.
+   * Distinct from list cache key `${userId}:${pending}` used by getRelationshipsWithProfilesByStatus.
+   */
+  private buildPendingIncomingCountCacheKeySuffix(userId: string): string {
+    return `${userId}:${RelationshipStatus.PENDING}:incoming`;
   }
 
   /**
@@ -172,9 +181,32 @@ export class RelationshipService {
     );
   }
 
-  async getMyFriendCount(userId: string): Promise<number> {
-    const friendIds = await this.getMyFriendIds(userId);
-    return friendIds.length;
+  /**
+   * Accepted friend count (reuses MY_FRIEND_IDS cache) and pending requests
+   * **awaiting this user’s accept** only (excludes pending where this user is initiator).
+   */
+  async getRelationshipCount(
+    userId: string,
+  ): Promise<RelationshipCountResponse> {
+    const [friendIds, pendingRequestCount] = await Promise.all([
+      this.getMyFriendIds(userId),
+      this.cacheService.getOrCompute(
+        REDIS_KEY_FEATURES.RELATIONSHIPS,
+        this.buildPendingIncomingCountCacheKeySuffix(userId),
+        async () => {
+          const userObjectId = new Types.ObjectId(userId);
+          return this.relationshipRepository.countPendingAwaitingUserAccept(
+            userObjectId,
+          );
+        },
+        this.cacheTtlSeconds,
+      ),
+    ]);
+
+    return {
+      acceptedFriendCount: friendIds.length,
+      pendingRequestCount,
+    };
   }
 
   /**
@@ -219,9 +251,13 @@ export class RelationshipService {
   }
 
   private async invalidateRelationshipsCache(userId: string): Promise<void> {
-    const relationshipSuffixes = Object.values(RelationshipStatus).map(
-      (status) => this.buildRelationshipCacheKeySuffix(userId, status),
-    );
+    const relationshipSuffixes = [
+      ...Object.values(RelationshipStatus).map((status) =>
+        this.buildRelationshipCacheKeySuffix(userId, status),
+      ),
+      this.buildPendingIncomingCountCacheKeySuffix(userId),
+    ];
+
     await this.cacheService.invalidateMany(
       REDIS_KEY_FEATURES.RELATIONSHIPS,
       relationshipSuffixes,

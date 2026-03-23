@@ -16,3 +16,8 @@ export interface RelationshipResponse {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface RelationshipCountResponse {
+  acceptedFriendCount: number;
+  pendingRequestCount: number;
+}

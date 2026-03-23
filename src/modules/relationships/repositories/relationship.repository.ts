@@ -103,26 +103,14 @@ export class RelationshipRepository implements IRelationshipRepository {
     return results.map((result) => result.friendId as Types.ObjectId);
   }
 
-  /**
-   * Count relationships for a user by status
-   * Pure query method - no business logic validation
-   * @param userId - User ID to count
-   * @param status - Optional status filter (if not provided, counts all statuses)
-   * @returns Count of relationships
-   */
-  async countRelationshipsByStatus(
+  async countPendingAwaitingUserAccept(
     userId: Types.ObjectId,
-    status?: RelationshipStatus,
   ): Promise<number> {
-    const query: any = {
+    return this.relationshipModel.countDocuments({
+      status: RelationshipStatus.PENDING,
       $or: [{ user1Id: userId }, { user2Id: userId }],
-    };
-
-    if (status) {
-      query.status = status;
-    }
-
-    return this.relationshipModel.countDocuments(query);
+      initiator: { $ne: userId },
+    });
   }
 
   /**
