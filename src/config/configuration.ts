@@ -70,17 +70,16 @@ export default () => ({
   postsUnread: {
     worker: {
       drainDelaySeconds: parseInt(
-        process.env.POSTS_UNREAD_WORKER_DRAIN_DELAY_SECONDS || String(30 * 60),
+        process.env.POSTS_UNREAD_WORKER_DRAIN_DELAY_SECONDS || String(5 * 60), // 5 minutes
         30,
       ),
       lockDurationMs: parseInt(
-        process.env.POSTS_UNREAD_WORKER_LOCK_DURATION_MS ||
-          String(10 * 60 * 1000),
+        process.env.POSTS_UNREAD_WORKER_LOCK_DURATION_MS || String(20 * 1000), // 20 seconds
         30,
       ),
       stalledIntervalMs: parseInt(
         process.env.POSTS_UNREAD_WORKER_STALLED_INTERVAL_MS ||
-          String(5 * 60 * 1000),
+          String(10 * 1000), // 10 seconds
         15,
       ),
     },
