@@ -10,13 +10,11 @@ import {
 } from '../interfaces/user-response.interface';
 import { UserRepository } from '../repositories/user.repository';
 import * as bcrypt from 'bcrypt';
-import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
-import { buildRedisKey } from '@common/utils/redis.utils';
-import { RedisService } from '@common/redis/redis.service';
 import { randomBytes } from 'crypto';
 import { AVATAR_V1_FOLDER, MAX_AVATAR_FILE_SIZE } from '@common/constants';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import { ImageSizeKey, ImageSizesResponse } from '@common/types';
+import { SearchUserItemResponse } from '../interfaces/user-search-response.interface';
 
 const AVATAR_SIZE_KEYS: ImageSizeKey[] = [
   ImageSizeKey.XS,
@@ -28,29 +26,11 @@ const AVATAR_SIZE_KEYS: ImageSizeKey[] = [
 export class UserService {
   constructor(
     private readonly userRepository: UserRepository,
-    private readonly redisService: RedisService,
     private readonly storageService: StorageService,
   ) {}
 
   async checkUserExists(userId: string): Promise<boolean> {
-    // Build Redis key for user existence cache
-    const redisKey = buildRedisKey(REDIS_KEY_FEATURES.USER_NOT_FOUND, userId);
-
-    const cachedValue = await this.redisService.get(redisKey);
-
-    if (cachedValue !== null) {
-      return false;
-    }
-
-    // Cache miss - query database
-    const user = await this.userRepository.findActiveById(userId);
-
-    if (!user) {
-      await this.redisService.set(redisKey, '1', 24 * 60 * 60);
-      return false;
-    }
-
-    return true;
+    return this.userRepository.findActiveById(userId) !== null;
   }
 
   async hashPassword(password: string): Promise<string> {
@@ -239,5 +219,32 @@ export class UserService {
     }
 
     return this.buildUserProfileResponse(updatedUser);
+  }
+
+  async searchUsers(
+    query: string,
+    limit: number,
+    requesterId: string,
+  ): Promise<SearchUserItemResponse[]> {
+    const trimmedQuery = query.trim();
+    if (trimmedQuery.length < 2) return [];
+
+    const joined = await this.userRepository.searchByUsernameWithRelationship(
+      requesterId,
+      trimmedQuery,
+      limit,
+    );
+
+    return joined.map((user) => ({
+      userId: user.userId,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      avatarUrls: this.getAvatarUrlsForKey(user.avatarKey),
+      id: user.id,
+      status: user.status,
+      createdAt: user.createdAt,
+      initiator: user.initiator,
+    }));
   }
 }

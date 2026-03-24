@@ -24,6 +24,9 @@ import {
   AvatarUploadRequestResponse,
   IUserProfileResponse,
 } from '../interfaces/user-response.interface';
+import { Throttle } from '@nestjs/throttler';
+import { SearchUsersQueryDto } from '../dto/search-users.dto';
+import type { SearchUserItemResponse } from '../interfaces/user-search-response.interface';
 
 @Controller('users')
 export class UsersController {
@@ -49,6 +52,16 @@ export class UsersController {
     const userInfo = await this.userService.getUserProfileByUsername(username);
 
     return userInfo;
+  }
+
+  @Get('search')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 40, ttl: 10000 } })
+  async searchUsers(
+    @Query() dto: SearchUsersQueryDto,
+    @CurrentUserId() userId: string,
+  ): Promise<SearchUserItemResponse[]> {
+    return this.userService.searchUsers(dto.q, dto.limit, userId);
   }
 
   @Post('avatar/upload/request')

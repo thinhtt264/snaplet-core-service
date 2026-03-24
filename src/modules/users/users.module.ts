@@ -10,12 +10,17 @@ import { UserValidationService } from './services/user-validation.service';
 import { UserRepository } from './repositories/user.repository';
 import { UsersController } from './controllers/users.controller';
 import { StorageModule } from '@infrastructure/storage/storage.module';
+import {
+  Relationship,
+  RelationshipSchema,
+} from '../relationships/schemas/relationship.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: UserFingerprint.name, schema: UserFingerprintSchema },
+      { name: Relationship.name, schema: RelationshipSchema },
     ]),
     StorageModule,
   ],

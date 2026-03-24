@@ -15,10 +15,6 @@ export const REDIS_KEY_FEATURES = {
   POST_UNREAD_LAST_SEEN_CACHE: 'post:last_seen_cache',
   POST_UNREAD_COUNT_CACHE: 'post:unread_count_cache',
   POST_SESSION_STATE: 'post:session_state',
-  // Add more features here as needed
-  // USER_SESSION: 'user-session',
-  // RATE_LIMIT: 'rate-limit',
-  // CACHE: 'cache',
 } as const;
 
 export type RedisKeyFeature =

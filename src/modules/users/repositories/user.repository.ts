@@ -1,13 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { User } from '../schemas/user.schema';
 import { IUserRepository } from '../interfaces/user-repository.interface';
+import {
+  RawSearchUser,
+  SearchUserBasicInfoWithRelationshipStatusRaw,
+} from '../interfaces/search-users.interface';
+import {
+  Relationship,
+  RelationshipStatus,
+} from '@modules/relationships/schemas/relationship.schema';
 
 @Injectable()
 export class UserRepository implements IUserRepository {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Relationship.name)
+    private readonly relationshipModel: Model<Relationship>,
   ) {}
 
   async findActiveByEmail(email: string): Promise<User | null> {
@@ -52,6 +62,46 @@ export class UserRepository implements IUserRepository {
     return user.save();
   }
 
+  private async searchByUsernameRaw(
+    normalizedQuery: string,
+    limit: number,
+  ): Promise<RawSearchUser[]> {
+    return this.userModel
+      .aggregate<RawSearchUser>([
+        {
+          $match: {
+            isDeleted: false,
+            // username is stored lowercase -> no need for $options: 'i'
+            username: { $regex: `^${normalizedQuery}` },
+          },
+        },
+        {
+          $addFields: {
+            _matchDistance: {
+              $subtract: [{ $strLenCP: '$username' }, normalizedQuery.length],
+            },
+          },
+        },
+        {
+          $sort: {
+            _matchDistance: 1,
+            username: 1,
+          },
+        },
+        { $limit: limit },
+        {
+          $project: {
+            _id: 1,
+            username: 1,
+            firstName: 1,
+            lastName: 1,
+            avatarKey: 1,
+          },
+        },
+      ])
+      .exec();
+  }
+
   async updateAvatarKey(
     userId: string,
     avatarKey: string,
@@ -80,5 +130,109 @@ export class UserRepository implements IUserRepository {
         { new: true },
       )
       .exec();
+  }
+
+  async searchByUsernameWithRelationship(
+    requesterId: string,
+    query: string,
+    limit: number,
+  ): Promise<SearchUserBasicInfoWithRelationshipStatusRaw[]> {
+    const normalizedQuery = query.toLowerCase();
+    const rawUsers = await this.searchByUsernameRaw(normalizedQuery, limit);
+
+    const targetUsers = rawUsers.filter(
+      (u) => u._id.toString() !== requesterId,
+    );
+    if (!targetUsers.length) return [];
+
+    const targetUserIds = targetUsers.map((u) => u._id.toString());
+
+    const requesterObjectId = new Types.ObjectId(requesterId);
+    const targetObjectIds = targetUserIds.map((id) => new Types.ObjectId(id));
+
+    const relationshipRows = await this.relationshipModel
+      .aggregate<{
+        targetId: string;
+        id: string;
+        status: RelationshipStatus;
+        createdAt: Date;
+        initiator: string;
+      }>([
+        {
+          $match: {
+            $or: [
+              {
+                user1Id: requesterObjectId,
+                user2Id: { $in: targetObjectIds },
+              },
+              {
+                user2Id: requesterObjectId,
+                user1Id: { $in: targetObjectIds },
+              },
+            ],
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            targetId: {
+              $cond: [
+                { $eq: ['$user1Id', requesterObjectId] },
+                '$user2Id',
+                '$user1Id',
+              ],
+            },
+            id: { $toString: '$_id' },
+            status: 1,
+            createdAt: 1,
+            initiator: 1,
+          },
+        },
+        {
+          $project: {
+            targetId: { $toString: '$targetId' },
+            id: 1,
+            status: 1,
+            createdAt: 1,
+            initiator: { $toString: '$initiator' },
+          },
+        },
+      ])
+      .exec();
+
+    const relationshipMap = relationshipRows.reduce(
+      (acc, row) => {
+        acc[row.targetId] = {
+          id: row.id,
+          status: row.status,
+          createdAt: row.createdAt,
+          initiator: row.initiator,
+        };
+        return acc;
+      },
+      {} as Record<
+        string,
+        {
+          id: string;
+          status: RelationshipStatus;
+          createdAt: Date;
+          initiator: string;
+        }
+      >,
+    );
+
+    return targetUsers.map((u) => ({
+      userId: u._id.toString(),
+      username: u.username,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      avatarKey: u.avatarKey,
+      ...(relationshipMap[u._id.toString()] ?? {
+        id: null,
+        status: null,
+        createdAt: null,
+        initiator: null,
+      }),
+    }));
   }
 }

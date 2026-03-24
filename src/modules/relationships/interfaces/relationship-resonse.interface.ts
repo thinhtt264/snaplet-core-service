@@ -2,9 +2,9 @@ import { UserBasicInfoResponse } from '@modules/users/interfaces/user-response.i
 import { RelationshipStatus } from '../schemas/relationship.schema';
 
 export interface RelationshipWithOtherUserResponse extends UserBasicInfoResponse {
-  id: string;
-  status: RelationshipStatus;
-  createdAt: Date;
+  id: string | null;
+  status: RelationshipStatus | null;
+  createdAt: Date | null;
 }
 
 export interface RelationshipResponse {
