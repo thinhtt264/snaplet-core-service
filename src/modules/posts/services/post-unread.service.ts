@@ -4,6 +4,7 @@ import { RedisService } from '@common/redis/redis.service';
 import { buildRedisKey } from '@common/utils/redis.utils';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { SocketService } from '@modules/socket/socket.service';
+import { CacheService } from '@modules/cache/cache.service';
 import {
   POST_LAST_SEEN_TTL_SECONDS,
   POST_SESSION_STATE_TTL_SECONDS,
@@ -18,6 +19,7 @@ export class PostUnreadService {
     private readonly relationshipService: RelationshipService,
     private readonly redisService: RedisService,
     private readonly socketService: SocketService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async handleUserConnected(userId: string, sessionId: string): Promise<void> {
@@ -82,8 +84,9 @@ export class PostUnreadService {
     userId: string,
     lastSeenPostCreatedAt: string,
   ): Promise<void> {
-    await this.redisService.set(
-      buildRedisKey(REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE, userId),
+    await this.cacheService.set(
+      REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+      userId,
       lastSeenPostCreatedAt,
       POST_LAST_SEEN_TTL_SECONDS,
     );
@@ -95,7 +98,12 @@ export class PostUnreadService {
     const stateKey = this.getSessionStateKey(userId);
     const sessionId = await this.redisService.hget(stateKey, 'sessionId');
     if (!sessionId) {
-      await this.redisService.set(countKey, '0', POST_UNREAD_CACHE_TTL_SECONDS);
+      await this.cacheService.set(
+        REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
+        userId,
+        0,
+        POST_UNREAD_CACHE_TTL_SECONDS,
+      );
       return;
     }
 
@@ -156,9 +164,10 @@ export class PostUnreadService {
         const count = Number(results[0]?.[1] ?? 0);
         const seq = Number(results[2]?.[1] ?? 0);
         if (count < 0) {
-          await this.redisService.set(
-            countKey,
-            '0',
+          await this.cacheService.set(
+            REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
+            friendId,
+            0,
             POST_UNREAD_CACHE_TTL_SECONDS,
           );
           return;

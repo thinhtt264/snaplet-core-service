@@ -6,6 +6,7 @@ import {
   IPostRepository,
   FindPostsWithCursorParams,
   FindPostsWithCursorResult,
+  RawPostActivityFromAggregation,
 } from '../interfaces/post-repository.interface';
 import { FeedCursor } from '../types/feed-cursor.types';
 import { RawPostFromAggregation } from '../interfaces/post-repository.interface';
@@ -165,6 +166,71 @@ export class PostRepository implements IPostRepository {
         },
       ])
       .exec();
+  }
+
+  async findLatestFriendActivities(params: {
+    friendIds: Types.ObjectId[];
+  }): Promise<RawPostActivityFromAggregation | null> {
+    const { friendIds } = params;
+    if (friendIds.length === 0) {
+      return null;
+    }
+
+    const rows = await this.postModel
+      .aggregate<RawPostActivityFromAggregation>([
+        {
+          $match: {
+            userId: { $in: friendIds },
+            isDeleted: { $ne: true },
+          },
+        },
+        { $sort: { createdAt: -1, _id: -1 } },
+        { $limit: 1 },
+        { $addFields: { mediaId: { $arrayElemAt: ['$mediaIds', 0] } } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'userId',
+            foreignField: '_id',
+            as: 'user',
+            pipeline: [{ $project: { _id: 0, avatarKey: 1 } }],
+          },
+        },
+        {
+          $unwind: {
+            path: '$user',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $lookup: {
+            from: 'media',
+            localField: 'mediaId',
+            foreignField: '_id',
+            as: 'media',
+            pipeline: [
+              {
+                $match: {
+                  isDeleted: { $ne: true },
+                  status: 'READY',
+                },
+              },
+              { $project: { _id: 0, mediaKey: 1 } },
+            ],
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            caption: 1,
+            avatarKey: '$user.avatarKey',
+            mediaKey: { $arrayElemAt: ['$media.mediaKey', 0] },
+          },
+        },
+      ])
+      .exec();
+
+    return rows[0] ?? null;
   }
 
   /**

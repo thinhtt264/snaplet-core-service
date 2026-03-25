@@ -79,7 +79,6 @@ export class SocketGateway
       const token = socket.handshake?.auth?.token;
 
       if (!token) {
-        this.logger.warn('WS connection rejected: no token');
         return next(new Error('Unauthorized'));
       }
 

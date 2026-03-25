@@ -18,7 +18,6 @@ export class WsJwtGuard implements CanActivate {
     const token = client.handshake?.auth?.token;
 
     if (!token) {
-      this.logger.warn('WS connection rejected: no token');
       throw new WsException('Unauthorized');
     }
 

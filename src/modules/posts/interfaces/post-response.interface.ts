@@ -19,3 +19,10 @@ export interface GetPostsResponse {
   data: PostResponse[];
   pagination: CursorPagination;
 }
+
+export interface PostActivityResponse {
+  imageUrl: string;
+  caption: string | null;
+  senderAvatarUrl: string | null;
+  unreadCount: number;
+}

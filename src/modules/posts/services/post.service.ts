@@ -9,6 +9,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Types } from 'mongoose';
 import {
   GetPostsResponse,
+  PostActivityResponse,
   PostResponse,
 } from '../interfaces/post-response.interface';
 import { RawPostFromAggregation } from '../interfaces/post-repository.interface';
@@ -18,8 +19,6 @@ import { PostRepository } from '../repositories/post.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
-import { RedisService } from '@common/redis/redis.service';
-import { buildRedisKey } from '@common/utils/redis.utils';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ImageSizeKey } from '@common/types';
 import { POST_CREATED_EVENT, PostCreatedEvent } from '../events/post-events';
@@ -30,6 +29,7 @@ import {
 import { PostUnreadService } from './post-unread.service';
 import { PostsUnreadQueueService } from '../queue/posts-unread.queue.service';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
+import { CacheService } from '@modules/cache/cache.service';
 
 @Injectable()
 export class PostService {
@@ -38,7 +38,7 @@ export class PostService {
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
-    private readonly redisService: RedisService,
+    private readonly cacheService: CacheService,
     private readonly postUnreadService: PostUnreadService,
     private readonly postsUnreadQueueService: PostsUnreadQueueService,
     private readonly eventEmitter: EventEmitter2,
@@ -150,50 +150,39 @@ export class PostService {
   }
 
   async unreadCount(userId: string): Promise<{ count: number }> {
-    const countKey = buildRedisKey(
+    const count = await this.cacheService.getOrCompute<number>(
       REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
       userId,
-    );
-    const cachedCountRaw = await this.redisService.get(countKey);
-
-    if (cachedCountRaw !== null) {
-      const cachedCount = Number(cachedCountRaw);
-      if (Number.isNaN(cachedCount) || cachedCount < 0) {
-        await this.redisService.set(
-          countKey,
-          '0',
-          POST_UNREAD_CACHE_TTL_SECONDS,
+      async () => {
+        const lastSeenRaw = await this.cacheService.get<string>(
+          REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+          userId,
         );
-        return { count: 0 };
-      }
+        if (!lastSeenRaw) {
+          return 0;
+        }
 
-      return { count: Math.min(cachedCount, POST_UNREAD_COUNT_MAX) };
-    }
+        const lastSeenAt = new Date(lastSeenRaw);
+        if (Number.isNaN(lastSeenAt.getTime())) {
+          return 0;
+        }
 
-    const lastSeenRaw = await this.redisService.get(
-      buildRedisKey(REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE, userId),
-    );
-    if (!lastSeenRaw) {
-      return { count: 0 };
-    }
-
-    const lastSeenAt = new Date(lastSeenRaw);
-    if (Number.isNaN(lastSeenAt.getTime())) {
-      return { count: 0 };
-    }
-
-    const friendIds = await this.relationshipService.getMyFriendIds(userId);
-    const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
-    const count = await this.postRepository.countPostsByFriendCreatedAfter(
-      friendObjectIds,
-      lastSeenAt,
-      POST_UNREAD_COUNT_MAX,
-    );
-
-    await this.redisService.set(
-      countKey,
-      String(count),
+        const friendIds = await this.relationshipService.getMyFriendIds(userId);
+        const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
+        return this.postRepository.countPostsByFriendCreatedAfter(
+          friendObjectIds,
+          lastSeenAt,
+          POST_UNREAD_COUNT_MAX,
+        );
+      },
       POST_UNREAD_CACHE_TTL_SECONDS,
+      {
+        validateCached: (value) =>
+          !Number.isNaN(value) && Number.isFinite(value) && value >= 0,
+        onInvalidCached: () => 0,
+        normalizeComputed: (value) =>
+          Math.min(Math.max(value, 0), POST_UNREAD_COUNT_MAX),
+      },
     );
 
     return { count };
@@ -247,6 +236,61 @@ export class PostService {
         error?.message || 'Failed to delete post',
       );
     }
+  }
+
+  async getPostsActivity(userId: string): Promise<PostActivityResponse | null> {
+    const keySuffix = userId;
+
+    const [activityRow, { count }] = await Promise.all([
+      this.cacheService.getOrCompute(
+        REDIS_KEY_FEATURES.POST_ACTIVITY_CACHE,
+        keySuffix,
+        async () => {
+          const friendIds =
+            await this.relationshipService.getMyFriendIds(userId);
+          if (friendIds.length === 0) {
+            return null;
+          }
+
+          const row = await this.postRepository.findLatestFriendActivities({
+            friendIds: friendIds.map((id) => new Types.ObjectId(id)),
+          });
+          if (!row) {
+            return null;
+          }
+
+          const imageUrls = this.mediaService.getImageSizesForKey(
+            row.mediaKey,
+            {
+              sizes: [ImageSizeKey.MD],
+            },
+          );
+          const avatarUrls = this.userService.getAvatarUrlsForKey(
+            row.avatarKey,
+            {
+              sizes: [ImageSizeKey.XS],
+            },
+          );
+
+          return {
+            imageUrl: imageUrls.md || imageUrls.original || '',
+            caption: row.caption?.trim() ? row.caption : null,
+            senderAvatarUrl: avatarUrls.xs || null,
+          };
+        },
+        POST_UNREAD_CACHE_TTL_SECONDS,
+      ),
+      this.unreadCount(userId),
+    ]);
+
+    if (!activityRow) {
+      return null;
+    }
+
+    return {
+      ...activityRow,
+      unreadCount: count,
+    };
   }
 
   /**

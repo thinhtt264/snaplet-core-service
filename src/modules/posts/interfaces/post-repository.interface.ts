@@ -46,6 +46,12 @@ export interface RawPostFromAggregation {
   media: RawMediaFromAggregation[];
 }
 
+export interface RawPostActivityFromAggregation {
+  caption: string;
+  mediaKey?: string;
+  avatarKey?: string;
+}
+
 export interface FindPostsWithCursorParams {
   userIds: Types.ObjectId[];
   limit: number;
@@ -69,4 +75,7 @@ export interface IPostRepository {
     params: FindPostsWithCursorParams,
   ): Promise<FindPostsWithCursorResult>;
   findPostByIdWithUserInfo(postId: Types.ObjectId): Promise<any | null>;
+  findLatestFriendActivities(params: {
+    friendIds: Types.ObjectId[];
+  }): Promise<RawPostActivityFromAggregation | null>;
 }

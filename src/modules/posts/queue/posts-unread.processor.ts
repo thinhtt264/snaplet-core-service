@@ -10,6 +10,8 @@ import { RedisService } from '@common/redis/redis.service';
 import { SocketService } from '@modules/socket/socket.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { PostUnreadService } from '../services/post-unread.service';
+import { CacheService } from '@modules/cache/cache.service';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import {
   POSTS_UNREAD_JOB_CREATED,
   POSTS_UNREAD_JOB_DELETED,
@@ -35,6 +37,7 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly relationshipService: RelationshipService,
     private readonly postUnreadService: PostUnreadService,
     private readonly socketService: SocketService,
+    private readonly cacheService: CacheService,
   ) {
     this.connection = this.redisService.getClient().duplicate();
   }
@@ -96,6 +99,11 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
     const friendIds = await this.relationshipService.getMyFriendIds(
       data.authorId,
     );
+
+    if (friendIds.length <= 0) {
+      return;
+    }
+
     await Promise.all(
       friendIds.map(async (friendId) => {
         const { count, seq } =
@@ -106,10 +114,25 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
         });
       }),
     );
+
+    await this.cacheService.invalidateMany(
+      REDIS_KEY_FEATURES.POST_ACTIVITY_CACHE,
+      friendIds,
+    );
   }
 
   private async handleDeleted(data: PostUnreadDeletedJobData): Promise<void> {
     await this.postUnreadService.applyPostDeleteSideEffects(data.authorId);
+
+    const friendIds = await this.relationshipService.getMyFriendIds(
+      data.authorId,
+    );
+    if (friendIds.length > 0) {
+      await this.cacheService.invalidateMany(
+        REDIS_KEY_FEATURES.POST_ACTIVITY_CACHE,
+        friendIds,
+      );
+    }
   }
 
   private async handleMarkSeen(data: PostUnreadMarkSeenJobData): Promise<void> {

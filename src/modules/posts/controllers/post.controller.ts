@@ -17,6 +17,7 @@ import { MarkSeenDto } from '../dto/mark-seen.dto';
 import { DeletePostParamDto } from '../dto/delete-post-param.dto';
 import {
   GetPostsResponse,
+  PostActivityResponse,
   PostResponse,
 } from '../interfaces/post-response.interface';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
@@ -60,6 +61,14 @@ export class PostController {
       query.limit || 10,
       query.cursor,
     );
+  }
+
+  @Get('activity')
+  @HttpCode(HttpStatus.OK)
+  async getPostsActivity(
+    @CurrentUserId() userId: string,
+  ): Promise<PostActivityResponse | null> {
+    return this.postService.getPostsActivity(userId);
   }
 
   @Post()
