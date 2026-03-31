@@ -234,12 +234,12 @@ export class PostService {
         throw new ForbiddenException('You are not the owner of this post');
       }
 
-      await this.postRepository.hardDeletePost(postIdObjectId);
       await this.postReactionRepository.deleteReactionsByPostId(postIdObjectId);
       await this.cacheService.invalidate(
         REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
         postId,
       );
+      await this.postRepository.hardDeletePost(postIdObjectId);
       void this.postsUnreadQueueService.enqueuePostDeleted(
         post.userId.toString(),
       );
