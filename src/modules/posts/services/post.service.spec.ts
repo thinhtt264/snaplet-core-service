@@ -232,3 +232,61 @@ describe('PostService post reactions - reactToPost', () => {
     expect(result.reactionIcon).toBe('1️⃣');
   });
 });
+
+describe('PostService - deletePost', () => {
+  it('deletes associated reactions and invalidates reactions cache', async () => {
+    const postId = '507f1f77bcf86cd799439011';
+    const postOwnerUserId = '507f1f77bcf86cd799439013';
+    const postIdObjectId = new Types.ObjectId(postId);
+
+    const postRepository = {
+      findPostById: jest.fn().mockResolvedValue({
+        userId: new Types.ObjectId(postOwnerUserId),
+      }),
+      hardDeletePost: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const postReactionRepository = {
+      deleteReactionsByPostId: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const cacheService = {
+      invalidate: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const postsUnreadQueueService = {
+      enqueuePostDeleted: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const eventEmitter = {
+      emit: jest.fn(),
+    } as unknown as EventEmitter2;
+
+    const service = new PostService(
+      postRepository as any,
+      postReactionRepository as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      cacheService as any,
+      {} as any,
+      postsUnreadQueueService as any,
+      eventEmitter,
+    );
+
+    await service.deletePost(postOwnerUserId, postId);
+
+    expect(postRepository.findPostById).toHaveBeenCalledWith(postIdObjectId);
+    expect(postReactionRepository.deleteReactionsByPostId).toHaveBeenCalledWith(
+      postIdObjectId,
+    );
+    expect(postRepository.hardDeletePost).toHaveBeenCalledWith(postIdObjectId);
+    expect(cacheService.invalidate).toHaveBeenCalledWith(
+      REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+      postId,
+    );
+    expect(postsUnreadQueueService.enqueuePostDeleted).toHaveBeenCalledWith(
+      postOwnerUserId,
+    );
+  });
+});
