@@ -1,4 +1,4 @@
-const MAX_REACTION_HISTORY = 3;
+import { MAX_REACTION_HISTORY } from '../constants/post-reaction.constants';
 
 export const buildReactionHistory = (
   currentReactionHistory: string | undefined,
