@@ -234,8 +234,8 @@ export class PostService {
         throw new ForbiddenException('You are not the owner of this post');
       }
 
-      await this.postReactionRepository.deleteReactionsByPostId(postIdObjectId);
       await this.postRepository.hardDeletePost(postIdObjectId);
+      await this.postReactionRepository.deleteReactionsByPostId(postIdObjectId);
       await this.cacheService.invalidate(
         REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
         postId,
