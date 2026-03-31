@@ -36,10 +36,13 @@ import {
   GetPostReactionsResponse,
   PostReactionResponse,
 } from '../interfaces/post-reaction-response.interface';
-import { buildReactionHistory } from '../utils/reaction-history.util';
 
 @Injectable()
 export class PostService {
+  private static readonly EMOJI_SEGMENTER = new Intl.Segmenter('en', {
+    granularity: 'grapheme',
+  });
+
   constructor(
     private readonly postRepository: PostRepository,
     private readonly postReactionRepository: PostReactionRepository,
@@ -257,28 +260,21 @@ export class PostService {
       await this.assertCanReactToPost(userId, ownerUserId);
       const reactorUserObjectId = new Types.ObjectId(userId);
       const sanitizedReactionIcon = reactionIcon.trim();
-      if (!sanitizedReactionIcon || sanitizedReactionIcon.includes(',')) {
+      if (
+        !sanitizedReactionIcon ||
+        sanitizedReactionIcon.includes(',') ||
+        !this.isSingleEmojiToken(sanitizedReactionIcon)
+      ) {
         throw new BadRequestException(
           'Reaction icon must be a single emoji token without comma',
         );
       }
 
-      const existingReaction =
-        await this.postReactionRepository.findActiveReaction({
-          postId: postIdObjectId,
-          reactorUserId: reactorUserObjectId,
-        });
-
-      const nextReactionHistory = buildReactionHistory(
-        existingReaction?.reactionIcon,
-        sanitizedReactionIcon,
-      );
-
       const reaction = await this.postReactionRepository.upsertReaction({
         postId: postIdObjectId,
         reactorUserId: reactorUserObjectId,
         postOwnerUserId: new Types.ObjectId(ownerUserId),
-        reactionIcon: nextReactionHistory,
+        incomingReactionIcon: sanitizedReactionIcon,
       });
 
       // Invalidate cached actor list for this post so owner sees updates quickly.
@@ -521,5 +517,10 @@ export class PostService {
         'Only post owner can view detailed reaction actors',
       );
     }
+  }
+
+  private isSingleEmojiToken(value: string): boolean {
+    const graphemes = [...PostService.EMOJI_SEGMENTER.segment(value)];
+    return graphemes.length === 1 && /\p{Extended_Pictographic}/u.test(value);
   }
 }

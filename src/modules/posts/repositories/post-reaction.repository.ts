@@ -7,6 +7,7 @@ import {
   ReactionActorRow,
 } from '../interfaces/post-reaction-repository.interface';
 import { PostReaction } from '../schemas/post-reaction.schema';
+import { MAX_REACTION_HISTORY } from '../constants/post-reaction.constants';
 
 @Injectable()
 export class PostReactionRepository {
@@ -15,28 +16,14 @@ export class PostReactionRepository {
     private readonly postReactionModel: Model<PostReaction>,
   ) {}
 
-  async findActiveReaction(params: {
-    postId: Types.ObjectId;
-    reactorUserId: Types.ObjectId;
-  }): Promise<Pick<PostReaction, 'reactionIcon'> | null> {
-    return this.postReactionModel
-      .findOne({
-        postId: params.postId,
-        reactorUserId: params.reactorUserId,
-        isDeleted: { $ne: true },
-      })
-      .select({ reactionIcon: 1 })
-      .lean<Pick<PostReaction, 'reactionIcon'>>()
-      .exec();
-  }
-
   async upsertReaction(params: {
     postId: Types.ObjectId;
     reactorUserId: Types.ObjectId;
     postOwnerUserId: Types.ObjectId;
-    reactionIcon: string;
+    incomingReactionIcon: string;
   }): Promise<PostReaction> {
-    const { postId, reactorUserId, postOwnerUserId, reactionIcon } = params;
+    const { postId, reactorUserId, postOwnerUserId, incomingReactionIcon } =
+      params;
     return this.postReactionModel
       .findOneAndUpdate(
         {
@@ -44,13 +31,74 @@ export class PostReactionRepository {
           reactorUserId,
           isDeleted: { $ne: true },
         },
-        {
-          $set: {
-            postOwnerUserId,
-            reactionIcon,
-            isDeleted: false,
+        [
+          {
+            $set: {
+              postOwnerUserId,
+              isDeleted: false,
+              reactionIcon: {
+                $let: {
+                  vars: {
+                    incomingToken: incomingReactionIcon,
+                    previousTokens: {
+                      $filter: {
+                        input: {
+                          $map: {
+                            input: {
+                              $split: [{ $ifNull: ['$reactionIcon', ''] }, ','],
+                            },
+                            as: 'token',
+                            in: { $trim: { input: '$$token' } },
+                          },
+                        },
+                        as: 'token',
+                        cond: { $ne: ['$$token', ''] },
+                      },
+                    },
+                  },
+                  in: {
+                    $let: {
+                      vars: {
+                        nextTokens: {
+                          $slice: [
+                            {
+                              $concatArrays: [
+                                ['$$incomingToken'],
+                                {
+                                  $filter: {
+                                    input: '$$previousTokens',
+                                    as: 'token',
+                                    cond: {
+                                      $ne: ['$$token', '$$incomingToken'],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                            MAX_REACTION_HISTORY,
+                          ],
+                        },
+                      },
+                      in: {
+                        $reduce: {
+                          input: '$$nextTokens',
+                          initialValue: '',
+                          in: {
+                            $cond: [
+                              { $eq: ['$$value', ''] },
+                              '$$this',
+                              { $concat: ['$$value', ',', '$$this'] },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
-        },
+        ],
         {
           upsert: true,
           new: true,

@@ -1,33 +1,124 @@
-import { buildReactionHistory } from '../utils/reaction-history.util';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { BadRequestException } from '@nestjs/common';
+import { Types } from 'mongoose';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 
-describe('reaction history util', () => {
-  it('prepends newest emoji to existing history', () => {
-    const next = buildReactionHistory('😀,👍', '🎉');
+jest.mock('@modules/media/services/media.service', () => ({
+  MediaService: jest.fn(),
+}));
 
-    expect(next).toBe('🎉,😀,👍');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { PostService } = require('./post.service');
+
+describe('PostService post reactions - reactToPost', () => {
+  it('uses atomic upsert without pre-reading active reaction', async () => {
+    const postId = '507f1f77bcf86cd799439011';
+    const postOwnerUserId = '507f1f77bcf86cd799439013';
+    const reactorUserId = '507f1f77bcf86cd799439012';
+
+    const postRepository = {
+      findPostById: jest.fn().mockResolvedValue({
+        userId: new Types.ObjectId(postOwnerUserId),
+      }),
+    };
+
+    const postReactionRepository = {
+      findActiveReaction: jest.fn(),
+      upsertReaction: jest.fn().mockResolvedValue({
+        postId: new Types.ObjectId(postId),
+        reactorUserId: new Types.ObjectId(reactorUserId),
+        reactionIcon: '🎉,😀,👍',
+        updatedAt: new Date('2026-03-31T10:00:00.000Z'),
+      }),
+    };
+
+    const relationshipService = {
+      getMyFriendIds: jest.fn().mockResolvedValue([postOwnerUserId]),
+    };
+
+    const cacheService = {
+      invalidate: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const eventEmitter = {
+      emit: jest.fn(),
+    } as unknown as EventEmitter2;
+
+    const service = new PostService(
+      postRepository as any,
+      postReactionRepository as any,
+      {} as any,
+      relationshipService as any,
+      {} as any,
+      cacheService as any,
+      {} as any,
+      {} as any,
+      eventEmitter,
+    );
+
+    const result = await service.reactToPost(reactorUserId, postId, '  🎉  ');
+
+    expect(postReactionRepository.findActiveReaction).not.toHaveBeenCalled();
+    expect(postReactionRepository.upsertReaction).toHaveBeenCalledTimes(1);
+    expect(postReactionRepository.upsertReaction).toHaveBeenCalledWith({
+      postId: expect.any(Types.ObjectId),
+      reactorUserId: expect.any(Types.ObjectId),
+      postOwnerUserId: expect.any(Types.ObjectId),
+      incomingReactionIcon: '🎉',
+    });
+
+    expect(cacheService.invalidate).toHaveBeenCalledWith(
+      REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+      postId,
+    );
+
+    expect(result.reactionIcon).toBe('🎉,😀,👍');
   });
 
-  it('drops the oldest emoji when history exceeds three items', () => {
-    const next = buildReactionHistory('😀,👍,🔥', '🎉');
+  it('rejects repeated emoji string like 🎉🎉🎉🎉', async () => {
+    const postId = '507f1f77bcf86cd799439011';
+    const postOwnerUserId = '507f1f77bcf86cd799439013';
+    const reactorUserId = '507f1f77bcf86cd799439012';
 
-    expect(next).toBe('🎉,😀,👍');
-  });
+    const postRepository = {
+      findPostById: jest.fn().mockResolvedValue({
+        userId: new Types.ObjectId(postOwnerUserId),
+      }),
+    };
 
-  it('creates single-item history when there is no previous reaction', () => {
-    const next = buildReactionHistory(undefined, '🎉');
+    const postReactionRepository = {
+      upsertReaction: jest.fn(),
+    };
 
-    expect(next).toBe('🎉');
-  });
+    const relationshipService = {
+      getMyFriendIds: jest.fn().mockResolvedValue([postOwnerUserId]),
+    };
 
-  it('deduplicates when incoming emoji already exists in history', () => {
-    const next = buildReactionHistory('🎉,😀,👍', '🎉');
+    const cacheService = {
+      invalidate: jest.fn(),
+    };
 
-    expect(next).toBe('🎉,😀,👍');
-  });
+    const eventEmitter = {
+      emit: jest.fn(),
+    } as unknown as EventEmitter2;
 
-  it('removes duplicate occurrences already present in history', () => {
-    const next = buildReactionHistory('🎉,🎉,😀', '🎉');
+    const service = new PostService(
+      postRepository as any,
+      postReactionRepository as any,
+      {} as any,
+      relationshipService as any,
+      {} as any,
+      cacheService as any,
+      {} as any,
+      {} as any,
+      eventEmitter,
+    );
 
-    expect(next).toBe('🎉,😀');
+    await expect(
+      service.reactToPost(reactorUserId, postId, '🎉🎉🎉🎉🎉🎉🎉🎉'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(postReactionRepository.upsertReaction).not.toHaveBeenCalled();
+    expect(cacheService.invalidate).not.toHaveBeenCalled();
   });
 });
