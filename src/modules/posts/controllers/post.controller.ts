@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Query,
   Body,
   UseGuards,
@@ -20,9 +21,16 @@ import {
   PostActivityResponse,
   PostResponse,
 } from '../interfaces/post-response.interface';
+import {
+  GetPostReactionsResponse,
+  PostReactionResponse,
+} from '../interfaces/post-reaction-response.interface';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { ReactToPostDto } from '../dto/react-to-post.dto';
+import { PostReactionParamDto } from '../dto/post-reaction-param.dto';
 
 @Controller('posts')
 @UseGuards(JwtAuthGuard)
@@ -93,5 +101,51 @@ export class PostController {
     @Param() params: DeletePostParamDto,
   ): Promise<void> {
     return await this.postService.deletePost(userId, params.postId);
+  }
+
+  @Patch(':postId/reactions')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({
+    default: {
+      limit: 10,
+      ttl: 30_000,
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  async reactToPost(
+    @CurrentUserId() userId: string,
+    @Param() params: PostReactionParamDto,
+    @Body() dto: ReactToPostDto,
+  ): Promise<PostReactionResponse> {
+    return this.postService.reactToPost(
+      userId,
+      params.postId,
+      dto.reactionIcon,
+    );
+  }
+
+  /**
+   * Remove current user's reaction from a post.
+   */
+  @Delete(':postId/reactions')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deletePostReaction(
+    @CurrentUserId() userId: string,
+    @Param() params: PostReactionParamDto,
+  ): Promise<void> {
+    return this.postService.removePostReaction(userId, params.postId);
+  }
+
+  /**
+   * Owner-only endpoint: list all users who reacted to a post (basic profile + reaction).
+   * Does not return aggregate reaction counts.
+   */
+  @Get(':postId/reactions')
+  @HttpCode(HttpStatus.OK)
+  async getPostReactions(
+    @CurrentUserId() userId: string,
+    @Param() params: PostReactionParamDto,
+  ): Promise<GetPostReactionsResponse> {
+    return this.postService.getPostReactions(userId, params.postId);
   }
 }

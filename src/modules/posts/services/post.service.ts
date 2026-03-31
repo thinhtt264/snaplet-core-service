@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   HttpException,
   Injectable,
@@ -16,6 +17,7 @@ import { RawPostFromAggregation } from '../interfaces/post-repository.interface'
 import { PostVisibility } from '../schemas/post.schema';
 import { parseCursor, encodeCursor } from '../types/feed-cursor.types';
 import { PostRepository } from '../repositories/post.repository';
+import { PostReactionRepository } from '../repositories/post-reaction.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
@@ -30,11 +32,17 @@ import { PostUnreadService } from './post-unread.service';
 import { PostsUnreadQueueService } from '../queue/posts-unread.queue.service';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
 import { CacheService } from '@modules/cache/cache.service';
+import {
+  GetPostReactionsResponse,
+  PostReactionResponse,
+} from '../interfaces/post-reaction-response.interface';
+import { buildReactionHistory } from '../utils/reaction-history.util';
 
 @Injectable()
 export class PostService {
   constructor(
     private readonly postRepository: PostRepository,
+    private readonly postReactionRepository: PostReactionRepository,
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
@@ -238,6 +246,129 @@ export class PostService {
     }
   }
 
+  async reactToPost(
+    userId: string,
+    postId: string,
+    reactionIcon: string,
+  ): Promise<PostReactionResponse> {
+    try {
+      const { postIdObjectId, ownerUserId } =
+        await this.assertPostExists(postId);
+      await this.assertCanReactToPost(userId, ownerUserId);
+      const reactorUserObjectId = new Types.ObjectId(userId);
+      const sanitizedReactionIcon = reactionIcon.trim();
+      if (!sanitizedReactionIcon || sanitizedReactionIcon.includes(',')) {
+        throw new BadRequestException(
+          'Reaction icon must be a single emoji token without comma',
+        );
+      }
+
+      const existingReaction =
+        await this.postReactionRepository.findActiveReaction({
+          postId: postIdObjectId,
+          reactorUserId: reactorUserObjectId,
+        });
+      const nextReactionHistory = buildReactionHistory(
+        existingReaction?.reactionIcon,
+        sanitizedReactionIcon,
+      );
+
+      const reaction = await this.postReactionRepository.upsertReaction({
+        postId: postIdObjectId,
+        reactorUserId: reactorUserObjectId,
+        postOwnerUserId: new Types.ObjectId(ownerUserId),
+        reactionIcon: nextReactionHistory,
+      });
+
+      // Invalidate cached actor list for this post so owner sees updates quickly.
+      await this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+        postId,
+      );
+
+      return {
+        postId: reaction.postId.toString(),
+        reactorUserId: reaction.reactorUserId.toString(),
+        reactionIcon: reaction.reactionIcon,
+        updatedAt: reaction.updatedAt,
+      };
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to react to post',
+      );
+    }
+  }
+
+  async removePostReaction(userId: string, postId: string): Promise<void> {
+    try {
+      const { postIdObjectId, ownerUserId } =
+        await this.assertPostExists(postId);
+      await this.assertCanReactToPost(userId, ownerUserId);
+
+      await this.postReactionRepository.removeReaction({
+        postId: postIdObjectId,
+        reactorUserId: new Types.ObjectId(userId),
+      });
+
+      // Invalidate cached actor list for this post so owner sees updates quickly.
+      await this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+        postId,
+      );
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to remove post reaction',
+      );
+    }
+  }
+
+  async getPostReactions(
+    userId: string,
+    postId: string,
+  ): Promise<GetPostReactionsResponse> {
+    try {
+      const { postIdObjectId, ownerUserId } =
+        await this.assertPostExists(postId);
+      this.assertCanViewReactionActors(userId, ownerUserId);
+
+      return await this.cacheService.getOrCompute<GetPostReactionsResponse>(
+        REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+        postId,
+        async () => {
+          const result = await this.postReactionRepository.findReactionActors({
+            postId: postIdObjectId,
+          });
+
+          return result.items.map((item) => ({
+            userId: item.userId.toString(),
+            username: item.username,
+            firstName: item.firstName,
+            lastName: item.lastName,
+            avatarUrls: this.userService.getAvatarUrlsForKey(item.avatarKey, {
+              sizes: [ImageSizeKey.XS],
+            }),
+            reactionIcon: item.reactionIcon,
+            reactedAt: item.reactedAt,
+          }));
+        },
+        POST_UNREAD_CACHE_TTL_SECONDS,
+      );
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to get post reactions',
+      );
+    }
+  }
+
   async getPostsActivity(userId: string): Promise<PostActivityResponse | null> {
     const keySuffix = userId;
 
@@ -334,5 +465,51 @@ export class PostService {
         isOwnPost: post.userId.toString() === userId,
       };
     });
+  }
+
+  private async assertPostExists(postId: string): Promise<{
+    postIdObjectId: Types.ObjectId;
+    ownerUserId: string;
+  }> {
+    if (!Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid post id');
+    }
+
+    const postIdObjectId = new Types.ObjectId(postId);
+    const post = await this.postRepository.findPostById(postIdObjectId);
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    return {
+      postIdObjectId,
+      ownerUserId: post.userId.toString(),
+    };
+  }
+
+  private async assertCanReactToPost(
+    reactorUserId: string,
+    postOwnerUserId: string,
+  ): Promise<void> {
+    if (reactorUserId === postOwnerUserId) {
+      throw new ForbiddenException('Post owner cannot react to own post');
+    }
+
+    const friendIds =
+      await this.relationshipService.getMyFriendIds(reactorUserId);
+    if (!friendIds.includes(postOwnerUserId)) {
+      throw new ForbiddenException('Only friends can react to this post');
+    }
+  }
+
+  private assertCanViewReactionActors(
+    requesterUserId: string,
+    postOwnerUserId: string,
+  ): void {
+    if (requesterUserId !== postOwnerUserId) {
+      throw new ForbiddenException(
+        'Only post owner can view detailed reaction actors',
+      );
+    }
   }
 }
