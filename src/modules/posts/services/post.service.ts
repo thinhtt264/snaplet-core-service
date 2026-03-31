@@ -355,6 +355,20 @@ export class PostService {
           }));
         },
         DEFAULT_CACHE_POST_TTL,
+        {
+          deserialize: (raw) => {
+            const parsed = JSON.parse(raw) as Array<
+              Omit<GetPostReactionsResponse[number], 'reactedAt'> & {
+                reactedAt: string;
+              }
+            >;
+
+            return parsed.map((item) => ({
+              ...item,
+              reactedAt: new Date(item.reactedAt),
+            }));
+          },
+        },
       );
     } catch (error: any) {
       if (error instanceof HttpException) {
