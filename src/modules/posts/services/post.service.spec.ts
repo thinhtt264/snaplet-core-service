@@ -18,4 +18,16 @@ describe('reaction history util', () => {
 
     expect(next).toBe('🎉');
   });
+
+  it('deduplicates when incoming emoji already exists in history', () => {
+    const next = buildReactionHistory('🎉,😀,👍', '🎉');
+
+    expect(next).toBe('🎉,😀,👍');
+  });
+
+  it('removes duplicate occurrences already present in history', () => {
+    const next = buildReactionHistory('🎉,🎉,😀', '🎉');
+
+    expect(next).toBe('🎉,😀');
+  });
 });

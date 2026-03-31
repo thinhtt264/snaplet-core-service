@@ -268,6 +268,7 @@ export class PostService {
           postId: postIdObjectId,
           reactorUserId: reactorUserObjectId,
         });
+
       const nextReactionHistory = buildReactionHistory(
         existingReaction?.reactionIcon,
         sanitizedReactionIcon,
@@ -306,7 +307,7 @@ export class PostService {
     try {
       const { postIdObjectId, ownerUserId } =
         await this.assertPostExists(postId);
-      await this.assertCanReactToPost(userId, ownerUserId);
+      await this.assertCanRemovePostReaction(userId, ownerUserId);
 
       await this.postReactionRepository.removeReaction({
         postId: postIdObjectId,
@@ -499,6 +500,15 @@ export class PostService {
       await this.relationshipService.getMyFriendIds(reactorUserId);
     if (!friendIds.includes(postOwnerUserId)) {
       throw new ForbiddenException('Only friends can react to this post');
+    }
+  }
+
+  private async assertCanRemovePostReaction(
+    reactorUserId: string,
+    postOwnerUserId: string,
+  ): Promise<void> {
+    if (reactorUserId === postOwnerUserId) {
+      throw new ForbiddenException('Post owner cannot remove own reaction');
     }
   }
 
