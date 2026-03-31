@@ -527,6 +527,6 @@ export class PostService {
 
     // Accept single-grapheme emoji tokens, including flag sequences made of
     // Regional Indicator symbols (which are not Extended_Pictographic).
-    return /[\p{Emoji}\p{Regional_Indicator}]/u.test(value);
+    return /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(value);
   }
 }
