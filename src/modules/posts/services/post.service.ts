@@ -525,6 +525,11 @@ export class PostService {
       return false;
     }
 
+    // Keycap emoji are single graphemes composed from base + VS16? + U+20E3.
+    if (/^[0-9#*]\uFE0F?\u20E3$/u.test(value)) {
+      return true;
+    }
+
     // Accept single-grapheme emoji tokens, including flag sequences made of
     // Regional Indicator symbols (which are not Extended_Pictographic).
     return /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(value);

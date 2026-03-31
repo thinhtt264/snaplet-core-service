@@ -176,4 +176,59 @@ describe('PostService post reactions - reactToPost', () => {
     });
     expect(result.reactionIcon).toBe('🇺🇸');
   });
+
+  it('accepts single-grapheme keycap emoji', async () => {
+    const postId = '507f1f77bcf86cd799439011';
+    const postOwnerUserId = '507f1f77bcf86cd799439013';
+    const reactorUserId = '507f1f77bcf86cd799439012';
+
+    const postRepository = {
+      findPostById: jest.fn().mockResolvedValue({
+        userId: new Types.ObjectId(postOwnerUserId),
+      }),
+    };
+
+    const postReactionRepository = {
+      upsertReaction: jest.fn().mockResolvedValue({
+        postId: new Types.ObjectId(postId),
+        reactorUserId: new Types.ObjectId(reactorUserId),
+        reactionIcon: '1️⃣',
+        updatedAt: new Date('2026-03-31T10:00:00.000Z'),
+      }),
+    };
+
+    const relationshipService = {
+      getMyFriendIds: jest.fn().mockResolvedValue([postOwnerUserId]),
+    };
+
+    const cacheService = {
+      invalidate: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const eventEmitter = {
+      emit: jest.fn(),
+    } as unknown as EventEmitter2;
+
+    const service = new PostService(
+      postRepository as any,
+      postReactionRepository as any,
+      {} as any,
+      relationshipService as any,
+      {} as any,
+      cacheService as any,
+      {} as any,
+      {} as any,
+      eventEmitter,
+    );
+
+    const result = await service.reactToPost(reactorUserId, postId, '1️⃣');
+
+    expect(postReactionRepository.upsertReaction).toHaveBeenCalledWith({
+      postId: expect.any(Types.ObjectId),
+      reactorUserId: expect.any(Types.ObjectId),
+      postOwnerUserId: expect.any(Types.ObjectId),
+      incomingReactionIcon: '1️⃣',
+    });
+    expect(result.reactionIcon).toBe('1️⃣');
+  });
 });
