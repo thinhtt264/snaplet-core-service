@@ -34,6 +34,10 @@ export class PostReactionRepository {
         [
           {
             $set: {
+              createdAt: {
+                $ifNull: ['$createdAt', '$$NOW'],
+              },
+              updatedAt: '$$NOW',
               postOwnerUserId,
               isDeleted: false,
               reactionIcon: {
