@@ -107,6 +107,7 @@ export class PostReactionRepository {
           upsert: true,
           new: true,
           setDefaultsOnInsert: true,
+          updatePipeline: true,
         },
       )
       .exec();
