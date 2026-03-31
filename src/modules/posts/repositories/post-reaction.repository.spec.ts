@@ -25,4 +25,20 @@ describe('PostReactionRepository', () => {
       $ifNull: ['$createdAt', '$$NOW'],
     });
   });
+
+  it('deletes all reactions by post id', async () => {
+    const exec = jest.fn().mockResolvedValue({});
+    const deleteMany = jest.fn().mockReturnValue({ exec });
+    const model = {
+      deleteMany,
+    };
+
+    const repository = new PostReactionRepository(model as any);
+    const postId = new Types.ObjectId();
+
+    await repository.deleteReactionsByPostId(postId);
+
+    expect(deleteMany).toHaveBeenCalledWith({ postId });
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
 });

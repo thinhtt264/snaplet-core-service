@@ -125,6 +125,14 @@ export class PostReactionRepository {
       .exec();
   }
 
+  async deleteReactionsByPostId(postId: Types.ObjectId): Promise<void> {
+    await this.postReactionModel
+      .deleteMany({
+        postId,
+      })
+      .exec();
+  }
+
   async findReactionActors(
     params: FindReactionActorsParams,
   ): Promise<FindReactionActorsResult> {

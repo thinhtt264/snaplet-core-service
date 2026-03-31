@@ -225,9 +225,8 @@ export class PostService {
 
   async deletePost(userId: string, postId: string): Promise<void> {
     try {
-      const post = await this.postRepository.findPostById(
-        new Types.ObjectId(postId),
-      );
+      const postIdObjectId = new Types.ObjectId(postId);
+      const post = await this.postRepository.findPostById(postIdObjectId);
       if (!post) {
         throw new NotFoundException('Post not found');
       }
@@ -235,7 +234,12 @@ export class PostService {
         throw new ForbiddenException('You are not the owner of this post');
       }
 
-      await this.postRepository.hardDeletePost(new Types.ObjectId(postId));
+      await this.postReactionRepository.deleteReactionsByPostId(postIdObjectId);
+      await this.postRepository.hardDeletePost(postIdObjectId);
+      await this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+        postId,
+      );
       void this.postsUnreadQueueService.enqueuePostDeleted(
         post.userId.toString(),
       );
