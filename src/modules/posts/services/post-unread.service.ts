@@ -6,9 +6,8 @@ import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { SocketService } from '@modules/socket/socket.service';
 import { CacheService } from '@modules/cache/cache.service';
 import {
-  POST_LAST_SEEN_TTL_SECONDS,
+  DEFAULT_CACHE_POST_TTL,
   POST_SESSION_STATE_TTL_SECONDS,
-  POST_UNREAD_CACHE_TTL_SECONDS,
   POST_UNREAD_COUNT_MAX,
 } from '../constants/post-unread.constants';
 import { POSTS_UNREAD_UPDATED_EVENT } from '@modules/socket/events/socket-events';
@@ -62,7 +61,7 @@ export class PostUnreadService {
     const results = await this.redisService.multiExec(
       async (multi) => {
         multi.incr(countKey);
-        multi.expire(countKey, POST_UNREAD_CACHE_TTL_SECONDS);
+        multi.expire(countKey, DEFAULT_CACHE_POST_TTL);
         multi.hincrby(stateKey, 'seq', 1);
         multi.expire(stateKey, POST_SESSION_STATE_TTL_SECONDS);
         return multi.exec();
@@ -88,7 +87,7 @@ export class PostUnreadService {
       REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
       userId,
       lastSeenPostCreatedAt,
-      POST_LAST_SEEN_TTL_SECONDS,
+      DEFAULT_CACHE_POST_TTL,
     );
 
     const countKey = buildRedisKey(
@@ -102,14 +101,14 @@ export class PostUnreadService {
         REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
         userId,
         0,
-        POST_UNREAD_CACHE_TTL_SECONDS,
+        DEFAULT_CACHE_POST_TTL,
       );
       return;
     }
 
     const results = await this.redisService.multiExec(
       async (multi) => {
-        multi.set(countKey, '0', 'EX', POST_UNREAD_CACHE_TTL_SECONDS);
+        multi.set(countKey, '0', 'EX', DEFAULT_CACHE_POST_TTL);
         multi.hincrby(stateKey, 'seq', 1);
         multi.expire(stateKey, POST_SESSION_STATE_TTL_SECONDS);
         return multi.exec();
@@ -149,7 +148,7 @@ export class PostUnreadService {
         const results = await this.redisService.multiExec(
           async (multi) => {
             multi.decr(countKey);
-            multi.expire(countKey, POST_UNREAD_CACHE_TTL_SECONDS);
+            multi.expire(countKey, DEFAULT_CACHE_POST_TTL);
             multi.hincrby(stateKey, 'seq', 1);
             multi.expire(stateKey, POST_SESSION_STATE_TTL_SECONDS);
             return multi.exec();
@@ -168,7 +167,7 @@ export class PostUnreadService {
             REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
             friendId,
             0,
-            POST_UNREAD_CACHE_TTL_SECONDS,
+            DEFAULT_CACHE_POST_TTL,
           );
           return;
         }

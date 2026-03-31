@@ -25,7 +25,7 @@ import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ImageSizeKey } from '@common/types';
 import { POST_CREATED_EVENT, PostCreatedEvent } from '../events/post-events';
 import {
-  POST_UNREAD_CACHE_TTL_SECONDS,
+  DEFAULT_CACHE_POST_TTL,
   POST_UNREAD_COUNT_MAX,
 } from '../constants/post-unread.constants';
 import { PostUnreadService } from './post-unread.service';
@@ -186,7 +186,7 @@ export class PostService {
           POST_UNREAD_COUNT_MAX,
         );
       },
-      POST_UNREAD_CACHE_TTL_SECONDS,
+      DEFAULT_CACHE_POST_TTL,
       {
         validateCached: (value) =>
           !Number.isNaN(value) && Number.isFinite(value) && value >= 0,
@@ -354,7 +354,7 @@ export class PostService {
             reactedAt: item.reactedAt,
           }));
         },
-        POST_UNREAD_CACHE_TTL_SECONDS,
+        DEFAULT_CACHE_POST_TTL,
       );
     } catch (error: any) {
       if (error instanceof HttpException) {
@@ -406,7 +406,7 @@ export class PostService {
             senderAvatarUrl: avatarUrls.xs || null,
           };
         },
-        POST_UNREAD_CACHE_TTL_SECONDS,
+        DEFAULT_CACHE_POST_TTL,
       ),
       this.unreadCount(userId),
     ]);
@@ -521,6 +521,12 @@ export class PostService {
 
   private isSingleEmojiToken(value: string): boolean {
     const graphemes = [...PostService.EMOJI_SEGMENTER.segment(value)];
-    return graphemes.length === 1 && /\p{Extended_Pictographic}/u.test(value);
+    if (graphemes.length !== 1) {
+      return false;
+    }
+
+    // Accept single-grapheme emoji tokens, including flag sequences made of
+    // Regional Indicator symbols (which are not Extended_Pictographic).
+    return /[\p{Emoji}\p{Regional_Indicator}]/u.test(value);
   }
 }
