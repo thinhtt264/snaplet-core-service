@@ -41,4 +41,41 @@ describe('PostReactionRepository', () => {
     expect(deleteMany).toHaveBeenCalledWith({ postId });
     expect(exec).toHaveBeenCalledTimes(1);
   });
+
+  it('deletes reactions between two users and returns impacted post ids', async () => {
+    const exec = jest.fn().mockResolvedValue({});
+    const deleteMany = jest.fn().mockReturnValue({ exec });
+    const distinct = jest
+      .fn()
+      .mockResolvedValue([new Types.ObjectId('507f1f77bcf86cd799439011')]);
+    const model = {
+      deleteMany,
+      distinct,
+    };
+
+    const repository = new PostReactionRepository(model as any);
+    const user1Id = new Types.ObjectId('507f1f77bcf86cd799439012');
+    const user2Id = new Types.ObjectId('507f1f77bcf86cd799439013');
+
+    const postIds = await repository.deleteReactionsBetweenUsers({
+      user1Id,
+      user2Id,
+    });
+
+    expect(distinct).toHaveBeenCalledWith('postId', {
+      $or: [
+        {
+          postOwnerUserId: user1Id,
+          reactorUserId: user2Id,
+        },
+        {
+          postOwnerUserId: user2Id,
+          reactorUserId: user1Id,
+        },
+      ],
+    });
+    expect(deleteMany).toHaveBeenCalledTimes(1);
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(postIds).toEqual(['507f1f77bcf86cd799439011']);
+  });
 });

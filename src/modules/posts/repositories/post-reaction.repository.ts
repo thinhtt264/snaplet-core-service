@@ -133,6 +133,32 @@ export class PostReactionRepository {
       .exec();
   }
 
+  async deleteReactionsBetweenUsers(params: {
+    user1Id: Types.ObjectId;
+    user2Id: Types.ObjectId;
+  }): Promise<string[]> {
+    const { user1Id, user2Id } = params;
+    const filter = {
+      $or: [
+        {
+          postOwnerUserId: user1Id,
+          reactorUserId: user2Id,
+        },
+        {
+          postOwnerUserId: user2Id,
+          reactorUserId: user1Id,
+        },
+      ],
+    };
+
+    const impactedPostIds = await this.postReactionModel.distinct(
+      'postId',
+      filter,
+    );
+    await this.postReactionModel.deleteMany(filter).exec();
+    return impactedPostIds.map((id) => id.toString());
+  }
+
   async findReactionActors(
     params: FindReactionActorsParams,
   ): Promise<FindReactionActorsResult> {

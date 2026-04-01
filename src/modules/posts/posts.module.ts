@@ -12,6 +12,7 @@ import { PostRepository } from './repositories/post.repository';
 import { PostReactionRepository } from './repositories/post-reaction.repository';
 import { UserConnectedListener } from './listeners/user-connected.listener';
 import { PostEventListener } from './listeners/post-event.listener';
+import { RelationshipEventListener } from './listeners/relationship-event.listener';
 import { MediaModule } from '../media/media.module';
 import { RelationshipsModule } from '../relationships/relationships.module';
 import { UsersModule } from '../users/users.module';
@@ -40,6 +41,7 @@ import { PostsUnreadProcessor } from './queue/posts-unread.processor';
     PostReactionRepository,
     UserConnectedListener,
     PostEventListener,
+    RelationshipEventListener,
   ],
   exports: [PostService],
 })
