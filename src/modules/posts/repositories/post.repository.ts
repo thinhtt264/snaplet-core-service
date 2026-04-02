@@ -227,7 +227,7 @@ export class PostRepository implements IPostRepository {
             mediaKey: { $arrayElemAt: ['$media.mediaKey', 0] },
             postId: '$_id',
             authorUserId: '$userId',
-            mediaId: '$mediaId',
+            mediaId: { $arrayElemAt: ['$mediaIds', 0] },
           },
         },
       ])

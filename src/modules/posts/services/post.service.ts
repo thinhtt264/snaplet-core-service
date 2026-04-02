@@ -123,9 +123,13 @@ export class PostService {
           nextCursor,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
       throw new InternalServerErrorException(
-        error.message || 'Failed to fetch posts feed',
+        error?.message || 'Failed to fetch posts feed',
       );
     }
   }
