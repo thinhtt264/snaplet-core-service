@@ -149,17 +149,31 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    void this.cacheService.invalidateByTag(`user:${userId}`);
-
     const currentKey = user.avatarKey;
 
-    setImmediate(() => {
-      this.userRepository.updateAvatarKey(userId, '').catch(() => undefined);
-      if (
-        currentKey &&
-        currentKey.startsWith(`${AVATAR_V1_FOLDER}/${userId}-`)
-      ) {
-        this.storageService.deleteFile(currentKey).catch(() => undefined);
+    setImmediate(async () => {
+      try {
+        // Ensure cache invalidation happens AFTER the DB write.
+        // Otherwise a concurrent request can read the old DB value and
+        // repopulate the cache with stale data.
+        const updatedUser = await this.userRepository.updateAvatarKey(
+          userId,
+          '',
+        );
+
+        if (!updatedUser) return;
+
+        await this.cacheService.invalidateByTag(`user:${userId}`);
+
+        // Storage cleanup should not block avatar deletion correctness.
+        if (
+          currentKey &&
+          currentKey.startsWith(`${AVATAR_V1_FOLDER}/${userId}-`)
+        ) {
+          this.storageService.deleteFile(currentKey).catch(() => undefined);
+        }
+      } catch {
+        // Preserve previous behavior: do not fail request due to async cleanup.
       }
     });
 
