@@ -11,10 +11,11 @@ export function IsValidUserName(validationOptions?: ValidationOptions) {
       validator: {
         validate(value: any) {
           if (typeof value !== 'string') return false;
+          if (/\s/.test(value)) return false;
           return USERNAME_REGEX.test(value);
         },
         defaultMessage() {
-          return 'Username must contain only letters, numbers, and underscores';
+          return 'Username must not contain spaces and may only include letters, numbers, and underscores';
         },
       },
     });

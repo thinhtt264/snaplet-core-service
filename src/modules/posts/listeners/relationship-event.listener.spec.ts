@@ -22,9 +22,9 @@ describe('RelationshipEventListener', () => {
       user2Id: '507f1f77bcf86cd799439013',
     });
 
-    expect(postReactionRepository.deleteReactionsBetweenUsers).toHaveBeenCalledTimes(
-      1,
-    );
+    expect(
+      postReactionRepository.deleteReactionsBetweenUsers,
+    ).toHaveBeenCalledTimes(1);
     expect(cacheService.invalidateMany).toHaveBeenCalledWith(
       REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
       ['507f1f77bcf86cd799439011'],

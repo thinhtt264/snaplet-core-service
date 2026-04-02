@@ -27,3 +27,4 @@ export const MAX_PAGE_SIZE = 100;
 
 export * from './redis-keys.constants';
 export * from './regex.constants';
+export * from './user-profile.constants';
