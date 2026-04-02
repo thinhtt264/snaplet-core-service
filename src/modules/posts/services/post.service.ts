@@ -59,6 +59,7 @@ export class PostService {
     userId: string,
     limit: number = 10,
     cursor?: string,
+    filterUserIds?: string[],
   ): Promise<GetPostsResponse> {
     try {
       const userObjectId = new Types.ObjectId(userId);
@@ -73,7 +74,31 @@ export class PostService {
 
       const userIds = [userObjectId, ...friendUserIds];
 
-      if (userIds.length === 0) {
+      // Optional filter: when requester passes `userIds`, only include posts
+      // from those authors that are within the allowed visibility scope:
+      // self or accepted friends.
+      let effectiveUserIds = userIds;
+      if (filterUserIds?.length) {
+        const uniqueFilterUserIds = Array.from(new Set(filterUserIds));
+        for (const uid of uniqueFilterUserIds) {
+          if (!Types.ObjectId.isValid(uid)) {
+            throw new BadRequestException('Invalid user id');
+          }
+        }
+
+        const allowedUserIdStrings = new Set(
+          userIds.map((id) => id.toString()),
+        );
+        const filterObjectIds = uniqueFilterUserIds.map(
+          (uid) => new Types.ObjectId(uid),
+        );
+
+        effectiveUserIds = filterObjectIds.filter((id) =>
+          allowedUserIdStrings.has(id.toString()),
+        );
+      }
+
+      if (effectiveUserIds.length === 0) {
         return {
           data: [],
           pagination: { limit, nextCursor: null },
@@ -82,7 +107,7 @@ export class PostService {
 
       const parsedCursor = parseCursor(cursor);
       const result = await this.postRepository.findPostsWithCursor({
-        userIds,
+        userIds: effectiveUserIds,
         limit,
         cursor: parsedCursor,
       });
@@ -239,6 +264,7 @@ export class PostService {
         REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
         postId,
       );
+      await this.cacheService.invalidateByTag(`post:${postId}`);
       await this.postRepository.hardDeletePost(postIdObjectId);
       void this.postsUnreadQueueService.enqueuePostDeleted(
         post.userId.toString(),
@@ -372,6 +398,10 @@ export class PostService {
               reactedAt: new Date(item.reactedAt),
             }));
           },
+          resolveTags: (items) => [
+            `post:${postId}`,
+            ...items.map((i) => `user:${i.userId}`),
+          ],
         },
       );
     } catch (error: any) {
@@ -387,8 +417,16 @@ export class PostService {
   async getPostsActivity(userId: string): Promise<PostActivityResponse | null> {
     const keySuffix = userId;
 
+    type ActivityCached = Omit<PostActivityResponse, 'unreadCount'> & {
+      _cacheTagRefs: {
+        postId: string;
+        authorUserId: string;
+        mediaId: string;
+      };
+    };
+
     const [activityRow, { count }] = await Promise.all([
-      this.cacheService.getOrCompute(
+      this.cacheService.getOrCompute<ActivityCached | null>(
         REDIS_KEY_FEATURES.POST_ACTIVITY_CACHE,
         keySuffix,
         async () => {
@@ -401,7 +439,7 @@ export class PostService {
           const row = await this.postRepository.findLatestFriendActivities({
             friendIds: friendIds.map((id) => new Types.ObjectId(id)),
           });
-          if (!row) {
+          if (!row || !row.postId || !row.authorUserId || !row.mediaId) {
             return null;
           }
 
@@ -422,9 +460,28 @@ export class PostService {
             imageUrl: imageUrls.md || imageUrls.original || '',
             caption: row.caption?.trim() ? row.caption : null,
             senderAvatarUrl: avatarUrls.xs || null,
+            _cacheTagRefs: {
+              postId: row.postId.toString(),
+              authorUserId: row.authorUserId.toString(),
+              mediaId: row.mediaId.toString(),
+            },
           };
         },
         DEFAULT_CACHE_POST_TTL,
+        {
+          resolveTags: (v) => {
+            if (!v?._cacheTagRefs) {
+              return [];
+            }
+            const { postId, authorUserId, mediaId } = v._cacheTagRefs;
+            return [
+              `post:${postId}`,
+              `user:${authorUserId}`,
+              `media:${mediaId}`,
+              `activity:${userId}`,
+            ];
+          },
+        },
       ),
       this.unreadCount(userId),
     ]);
@@ -433,8 +490,11 @@ export class PostService {
       return null;
     }
 
+    const { _cacheTagRefs, ...activityRest } = activityRow;
+    void _cacheTagRefs;
+
     return {
-      ...activityRow,
+      ...activityRest,
       unreadCount: count,
     };
   }

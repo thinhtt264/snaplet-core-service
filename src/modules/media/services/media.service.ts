@@ -16,6 +16,7 @@ import {
   ConfirmUploadResponse,
 } from '../interfaces/media-response.interface';
 import { StorageService } from '@infrastructure/storage/storage.service';
+import { CacheService } from '@modules/cache/cache.service';
 import { IMAGE_V1_FOLDER, MAX_MEDIA_FILE_SIZE } from '@common/constants';
 import { ImageSizeKey } from '@common/types';
 import type { ImageSizesResponse } from '@common/types';
@@ -32,6 +33,7 @@ export class MediaService {
   constructor(
     private readonly mediaRepository: MediaRepository,
     private readonly storageService: StorageService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async requestBatchUpload(
@@ -185,15 +187,13 @@ export class MediaService {
   }
 
   private async processMedia(mediaId: Types.ObjectId): Promise<void> {
-    // Simulate processing - in production this would be async via queue
-    // For development, immediately mark as READY
-    // Use atomic update to ensure we only update if status is PROCESSING
-    // TODO: Replace with queue job: await this.queueService.add('process-media', { mediaId })
     await this.mediaRepository.updateStatusIf(
       mediaId,
       MediaStatus.PROCESSING,
       MediaStatus.READY,
     );
+
+    await this.cacheService.invalidateByTag(`media:${mediaId.toString()}`);
   }
 
   private async generateSignedUploadUrl(

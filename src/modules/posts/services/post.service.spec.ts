@@ -38,6 +38,7 @@ describe('PostService post reactions - reactToPost', () => {
 
     const cacheService = {
       invalidate: jest.fn().mockResolvedValue(undefined),
+      invalidateByTag: jest.fn().mockResolvedValue(undefined),
     };
 
     const eventEmitter = {
@@ -148,6 +149,7 @@ describe('PostService post reactions - reactToPost', () => {
 
     const cacheService = {
       invalidate: jest.fn().mockResolvedValue(undefined),
+      invalidateByTag: jest.fn().mockResolvedValue(undefined),
     };
 
     const eventEmitter = {
@@ -203,6 +205,7 @@ describe('PostService post reactions - reactToPost', () => {
 
     const cacheService = {
       invalidate: jest.fn().mockResolvedValue(undefined),
+      invalidateByTag: jest.fn().mockResolvedValue(undefined),
     };
 
     const eventEmitter = {
@@ -252,6 +255,7 @@ describe('PostService - deletePost', () => {
 
     const cacheService = {
       invalidate: jest.fn().mockResolvedValue(undefined),
+      invalidateByTag: jest.fn().mockResolvedValue(undefined),
     };
 
     const postsUnreadQueueService = {
@@ -285,6 +289,7 @@ describe('PostService - deletePost', () => {
       REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
       postId,
     );
+    expect(cacheService.invalidateByTag).toHaveBeenCalledWith(`post:${postId}`);
     expect(postsUnreadQueueService.enqueuePostDeleted).toHaveBeenCalledWith(
       postOwnerUserId,
     );

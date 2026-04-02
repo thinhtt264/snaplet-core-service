@@ -9,6 +9,7 @@ import {
   IUserProfileResponse,
 } from '../interfaces/user-response.interface';
 import { UserRepository } from '../repositories/user.repository';
+import { CacheService } from '@modules/cache/cache.service';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { AVATAR_V1_FOLDER, MAX_AVATAR_FILE_SIZE } from '@common/constants';
@@ -27,6 +28,7 @@ export class UserService {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly storageService: StorageService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async checkUserExists(userId: string): Promise<boolean> {
@@ -124,6 +126,8 @@ export class UserService {
       throw new NotFoundException('Unable to update avatar');
     }
 
+    await this.cacheService.invalidateByTag(`user:${userId}`);
+
     const oldKey = currentUser.avatarKey;
     if (
       oldKey &&
@@ -144,6 +148,8 @@ export class UserService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
+
+    void this.cacheService.invalidateByTag(`user:${userId}`);
 
     const currentKey = user.avatarKey;
 
@@ -217,6 +223,8 @@ export class UserService {
     if (!updatedUser) {
       throw new NotFoundException('Unable to update display name');
     }
+
+    await this.cacheService.invalidateByTag(`user:${userId}`);
 
     return this.buildUserProfileResponse(updatedUser);
   }

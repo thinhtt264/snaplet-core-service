@@ -21,12 +21,23 @@ interface CacheWriteOptions<T> {
   serialize?: SerializeFn<T>;
 }
 
+interface CacheSetOptions<T> extends CacheWriteOptions<T> {
+  /** Register this cache key under tag index sets (same TTL as entry). */
+  tags?: string[];
+}
+
 interface GetOrComputeOptions<T>
   extends CacheReadOptions<T>, CacheWriteOptions<T> {
   shouldCache?: (value: T) => boolean;
   validateCached?: (value: T) => boolean;
   onInvalidCached?: () => T | Promise<T>;
   normalizeComputed?: (value: T) => T;
+  /**
+   * After a cache miss, register tag index keys so `invalidateByTag` can delete
+   * this cache entry when a dependency entity changes. Called with the value
+   * that will be stored (after `normalizeComputed`).
+   */
+  resolveTags?: (value: T) => string[];
 }
 
 @Injectable()
@@ -37,6 +48,33 @@ export class CacheService {
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
   ) {}
+
+  /** Redis key holding SMEMBERS = full cache keys for a logical tag (e.g. `user:abc`). */
+  private buildTagIndexKey(tag: string): string {
+    const env = process.env.NODE_ENV || 'development';
+    const cacheVersion = process.env.REDIS_CACHE_VERSION || 'v1';
+    return `snaplet:${env}:${cacheVersion}:cache_tag:${tag}`;
+  }
+
+  private async registerTagsForCacheKey(
+    fullCacheKey: string,
+    tags: string[],
+    ttlSeconds: number,
+  ): Promise<void> {
+    if (tags.length === 0) return;
+
+    try {
+      for (const tag of tags) {
+        const tagKey = this.buildTagIndexKey(tag);
+        await this.redisService.sadd(tagKey, fullCacheKey);
+        await this.redisService.expire(tagKey, ttlSeconds);
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `Cache tag registration failed for ${fullCacheKey}: ${error?.message ?? error}`,
+      );
+    }
+  }
 
   private tryParseJson<T>(raw: string): { ok: true; value: T } | { ok: false } {
     try {
@@ -98,14 +136,14 @@ export class CacheService {
    * @param keyPrefix - Redis key feature
    * @param keySuffix - Additional key suffix (e.g., userId)
    * @param value - Value to cache
-   * @param ttlSeconds - Time to live in seconds
+   * @param ttlSeconds - Time to live in seconds (required)
    */
   async set<T>(
     keyPrefix: RedisKeyFeature,
     keySuffix: string,
     value: T,
-    ttlSeconds?: number,
-    options?: CacheWriteOptions<T>,
+    ttlSeconds: number,
+    options?: CacheSetOptions<T>,
   ): Promise<void> {
     const cacheKey = buildRedisKey(keyPrefix, keySuffix);
     const serialize =
@@ -113,6 +151,9 @@ export class CacheService {
 
     try {
       await this.redisService.set(cacheKey, serialize(value), ttlSeconds);
+      if (ttlSeconds > 0 && options?.tags?.length) {
+        await this.registerTagsForCacheKey(cacheKey, options.tags, ttlSeconds);
+      }
     } catch (error) {
       this.logger.warn(`Cache set failed for ${cacheKey}: ${error.message}`);
     }
@@ -148,6 +189,7 @@ export class CacheService {
         const fallback = await options.onInvalidCached();
         await this.set(keyPrefix, keySuffix, fallback, ttlSeconds, {
           serialize: options.serialize,
+          tags: options.resolveTags?.(fallback),
         });
         return fallback;
       }
@@ -163,6 +205,7 @@ export class CacheService {
       if (shouldCache(value)) {
         await this.set(keyPrefix, keySuffix, value, ttlSeconds, {
           serialize: options?.serialize,
+          tags: options?.resolveTags?.(value),
         });
       }
       return value;
@@ -251,5 +294,29 @@ export class CacheService {
         `Cache invalidate by feature failed for ${keyPrefix}: ${error.message}`,
       );
     }
+  }
+
+  /**
+   * Delete all cache entries registered under a logical tag (e.g. `user:507f...`).
+   * Tag sets are populated when entries are written via `set` / `getOrCompute` with tags.
+   */
+  async invalidateByTag(tag: string): Promise<void> {
+    const tagKey = this.buildTagIndexKey(tag);
+    try {
+      const members = await this.redisService.smembers(tagKey);
+      if (members.length > 0) {
+        await this.redisService.del(members);
+      }
+      await this.redisService.del(tagKey);
+      this.logger.debug(`Cache invalidated by tag: ${tag}`);
+    } catch (error: any) {
+      this.logger.warn(
+        `Cache invalidateByTag failed for ${tag}: ${error?.message ?? error}`,
+      );
+    }
+  }
+
+  async invalidateByTags(tags: string[]): Promise<void> {
+    await Promise.all(tags.map((t) => this.invalidateByTag(t)));
   }
 }

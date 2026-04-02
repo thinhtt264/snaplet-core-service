@@ -63,10 +63,21 @@ export class PostController {
     @CurrentUserId() userId: string,
     @Query() query: GetPostsQueryDto,
   ): Promise<GetPostsResponse> {
+    let filterUserIds: string[] | undefined;
+    if (query.userIds?.length) {
+      filterUserIds = query.userIds;
+    } else if (query.userId) {
+      filterUserIds = query.userId
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s): s is string => Boolean(s));
+    }
+
     return await this.postService.getPostsFeed(
       userId,
       query.limit || 10,
       query.cursor,
+      filterUserIds,
     );
   }
 
@@ -106,7 +117,7 @@ export class PostController {
   @UseGuards(ThrottlerGuard)
   @Throttle({
     default: {
-      limit: 10,
+      limit: 15,
       ttl: 30_000,
     },
   })

@@ -225,6 +225,9 @@ export class PostRepository implements IPostRepository {
             caption: 1,
             avatarKey: '$user.avatarKey',
             mediaKey: { $arrayElemAt: ['$media.mediaKey', 0] },
+            postId: '$_id',
+            authorUserId: '$userId',
+            mediaId: '$mediaId',
           },
         },
       ])

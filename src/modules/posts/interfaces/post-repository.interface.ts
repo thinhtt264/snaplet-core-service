@@ -50,6 +50,9 @@ export interface RawPostActivityFromAggregation {
   caption: string;
   mediaKey?: string;
   avatarKey?: string;
+  postId?: Types.ObjectId;
+  authorUserId?: Types.ObjectId;
+  mediaId?: Types.ObjectId;
 }
 
 export interface FindPostsWithCursorParams {
