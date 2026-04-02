@@ -1,25 +1,17 @@
 <!--
 Sync Impact Report
-- Version change: N/A -> 1.0.0
-- Modified principles:
-  - [PRINCIPLE_1_NAME] -> I. Domain-Driven Module Boundaries
-  - [PRINCIPLE_2_NAME] -> II. Contract-First API and Event Design
-  - [PRINCIPLE_3_NAME] -> III. Verification Before Merge
-  - [PRINCIPLE_4_NAME] -> IV. Security and Secrets by Default
-  - [PRINCIPLE_5_NAME] -> V. Operability and Failure Transparency
-- Added sections:
-  - Engineering Standards
-  - Delivery Workflow and Quality Gates
-- Removed sections:
-  - None
+- Version change: 1.0.0 → 1.0.1 (PATCH: stack clarity in Engineering Standards,
+  compliance wording sharpened, sync report corrected; no principle redefinitions)
+- Modified principles: None (titles and substance unchanged)
+- Added sections: None
+- Removed sections: None
 - Templates requiring updates:
-  - ✅ `.specify/templates/plan-template.md` (validated; Constitution Check placeholder remains compatible)
-  - ✅ `.specify/templates/spec-template.md` (validated; scenarios + requirements structure remains compatible)
-  - ✅ `.specify/templates/tasks-template.md` (validated; supports test and operational work items)
-  - ⚠ pending `.specify/templates/commands/*.md` (directory not present in repository)
-  - ✅ `.cursor/commands/speckit.constitution.md` (validated reference to generic agent guidance)
-- Follow-up TODOs:
-  - None
+  - ✅ `.specify/templates/plan-template.md` (Constitution Check gates expanded to match principles)
+  - ✅ `.specify/templates/spec-template.md` (validated; no change required)
+  - ✅ `.specify/templates/tasks-template.md` (validated; no change required)
+  - ✅ `.cursor/commands/*.md` (validated; agent filenames in archive flows are intentional)
+  - ⚠ N/A `.specify/templates/commands/` (directory not present; commands live under `.cursor/commands/`)
+- Follow-up TODOs: None
 -->
 # Snaplet Core Service Constitution
 
@@ -68,10 +60,13 @@ reliability under real-world conditions.
 ## Engineering Standards
 
 - Runtime and tooling MUST remain aligned with Node.js 22+ and TypeScript.
+- The service stack MUST continue to use NestJS 11 with Mongoose 9 for MongoDB
+  persistence and the existing Redis cache service for shared caching; new data
+  access MUST follow established module and repository patterns.
 - NestJS framework patterns (modules, providers, guards, interceptors, pipes)
   MUST be preferred over custom framework-like abstractions.
 - Linting and formatting MUST pass for touched files before merge.
-- New dependencies SHOULD be justified in plan/spec artifacts when native or
+- New dependencies MUST be justified in plan or spec artifacts when native or
   existing project capabilities are insufficient.
 
 ## Delivery Workflow and Quality Gates
@@ -79,11 +74,11 @@ reliability under real-world conditions.
 - Work items MUST trace to a specification and implementation plan when using
   Speckit workflows.
 - Pull requests MUST document scope, risk, test evidence, and any operational
-  rollout/rollback considerations.
+  rollout or rollback considerations.
 - High-risk changes (auth, permissions, data model changes, infra integrations)
   MUST include at least one independent reviewer.
 - If a principle cannot be satisfied, the exception MUST be documented in the
-  relevant plan under a clear complexity/risk justification.
+  relevant plan under a clear complexity or risk justification.
 
 ## Governance
 
@@ -91,20 +86,20 @@ This constitution is the authoritative engineering policy for this repository
 and supersedes conflicting local practices.
 
 Amendment process:
-1. Propose a change with rationale and impact on templates/workflows.
+1. Propose a change with rationale and impact on templates and workflows.
 2. Update this file and run a consistency pass across dependent templates and
    command guidance.
 3. Record the version bump according to semantic governance versioning.
 
 Versioning policy:
 - MAJOR: Incompatible principle removals or redefinitions.
-- MINOR: New principle/section or materially expanded mandates.
+- MINOR: New principle or section, or materially expanded mandates.
 - PATCH: Clarifications, wording improvements, or non-semantic refinements.
 
 Compliance review expectations:
-- Every plan/spec/tasks artifact generated for feature work MUST be checked for
-  constitution alignment.
-- Reviewers SHOULD block merges that violate non-negotiable principles unless a
-  documented exception is approved.
+- Every plan, spec, and tasks artifact generated for feature work MUST be
+  checked for constitution alignment.
+- Reviewers MUST not approve merges that violate non-negotiable principles
+  without a documented, approved exception.
 
-**Version**: 1.0.0 | **Ratified**: 2026-03-27 | **Last Amended**: 2026-03-27
+**Version**: 1.0.1 | **Ratified**: 2026-03-27 | **Last Amended**: 2026-04-02
