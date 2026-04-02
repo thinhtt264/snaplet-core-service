@@ -24,6 +24,11 @@ import { throwRelationshipLimitExceeded } from '@common/utils/common.utils';
 import { UserService } from '@modules/users/services/user.service';
 import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  RELATIONSHIP_DELETED_EVENT,
+  RelationshipDeletedEvent,
+} from '../events/relationship-events';
 @Injectable()
 export class RelationshipService {
   private readonly cacheTtlSeconds: number;
@@ -33,6 +38,7 @@ export class RelationshipService {
     private readonly userService: UserService,
     private readonly cacheService: CacheService,
     private readonly configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     this.cacheTtlSeconds = this.configService.get<number>(
       'relationships.cache.ttlSeconds',
@@ -445,5 +451,10 @@ export class RelationshipService {
 
     // Delete relationship directly from object (optimized - no duplicate query)
     await this.relationshipRepository.deleteRelationship(relationship);
+
+    this.eventEmitter.emit(RELATIONSHIP_DELETED_EVENT, {
+      user1Id: relationship.user1Id.toString(),
+      user2Id: relationship.user2Id.toString(),
+    } as RelationshipDeletedEvent);
   }
 }

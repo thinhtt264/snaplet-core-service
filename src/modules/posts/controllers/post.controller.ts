@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Query,
   Body,
   UseGuards,
@@ -14,15 +15,21 @@ import { PostService } from '../services/post.service';
 import { GetPostsQueryDto } from '../dto/get-posts-query.dto';
 import { CreatePostDto } from '../dto/create-post.dto';
 import { MarkSeenDto } from '../dto/mark-seen.dto';
-import { DeletePostParamDto } from '../dto/delete-post-param.dto';
+import { PostIdParamDto } from '../dto/post-id-param.dto';
 import {
   GetPostsResponse,
   PostActivityResponse,
   PostResponse,
 } from '../interfaces/post-response.interface';
+import {
+  GetPostReactionsResponse,
+  PostReactionResponse,
+} from '../interfaces/post-reaction-response.interface';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { ReactToPostDto } from '../dto/react-to-post.dto';
 
 @Controller('posts')
 @UseGuards(JwtAuthGuard)
@@ -90,8 +97,54 @@ export class PostController {
   @HttpCode(HttpStatus.OK)
   async deletePost(
     @CurrentUserId() userId: string,
-    @Param() params: DeletePostParamDto,
+    @Param() params: PostIdParamDto,
   ): Promise<void> {
     return await this.postService.deletePost(userId, params.postId);
+  }
+
+  @Patch(':postId/reactions')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({
+    default: {
+      limit: 10,
+      ttl: 30_000,
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  async reactToPost(
+    @CurrentUserId() userId: string,
+    @Param() params: PostIdParamDto,
+    @Body() dto: ReactToPostDto,
+  ): Promise<PostReactionResponse> {
+    return this.postService.reactToPost(
+      userId,
+      params.postId,
+      dto.reactionIcon,
+    );
+  }
+
+  /**
+   * Remove current user's reaction from a post.
+   */
+  @Delete(':postId/reactions')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deletePostReaction(
+    @CurrentUserId() userId: string,
+    @Param() params: PostIdParamDto,
+  ): Promise<void> {
+    return this.postService.removePostReaction(userId, params.postId);
+  }
+
+  /**
+   * Owner-only endpoint: list all users who reacted to a post (basic profile + reaction).
+   * Does not return aggregate reaction counts.
+   */
+  @Get(':postId/reactions')
+  @HttpCode(HttpStatus.OK)
+  async getPostReactions(
+    @CurrentUserId() userId: string,
+    @Param() params: PostIdParamDto,
+  ): Promise<GetPostReactionsResponse> {
+    return this.postService.getPostReactions(userId, params.postId);
   }
 }

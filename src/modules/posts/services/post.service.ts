@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   HttpException,
   Injectable,
@@ -16,6 +17,7 @@ import { RawPostFromAggregation } from '../interfaces/post-repository.interface'
 import { PostVisibility } from '../schemas/post.schema';
 import { parseCursor, encodeCursor } from '../types/feed-cursor.types';
 import { PostRepository } from '../repositories/post.repository';
+import { PostReactionRepository } from '../repositories/post-reaction.repository';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
@@ -23,18 +25,27 @@ import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ImageSizeKey } from '@common/types';
 import { POST_CREATED_EVENT, PostCreatedEvent } from '../events/post-events';
 import {
-  POST_UNREAD_CACHE_TTL_SECONDS,
+  DEFAULT_CACHE_POST_TTL,
   POST_UNREAD_COUNT_MAX,
 } from '../constants/post-unread.constants';
 import { PostUnreadService } from './post-unread.service';
 import { PostsUnreadQueueService } from '../queue/posts-unread.queue.service';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
 import { CacheService } from '@modules/cache/cache.service';
+import {
+  GetPostReactionsResponse,
+  PostReactionResponse,
+} from '../interfaces/post-reaction-response.interface';
 
 @Injectable()
 export class PostService {
+  private static readonly EMOJI_SEGMENTER = new Intl.Segmenter('en', {
+    granularity: 'grapheme',
+  });
+
   constructor(
     private readonly postRepository: PostRepository,
+    private readonly postReactionRepository: PostReactionRepository,
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
@@ -175,7 +186,7 @@ export class PostService {
           POST_UNREAD_COUNT_MAX,
         );
       },
-      POST_UNREAD_CACHE_TTL_SECONDS,
+      DEFAULT_CACHE_POST_TTL,
       {
         validateCached: (value) =>
           !Number.isNaN(value) && Number.isFinite(value) && value >= 0,
@@ -214,9 +225,8 @@ export class PostService {
 
   async deletePost(userId: string, postId: string): Promise<void> {
     try {
-      const post = await this.postRepository.findPostById(
-        new Types.ObjectId(postId),
-      );
+      const postIdObjectId = new Types.ObjectId(postId);
+      const post = await this.postRepository.findPostById(postIdObjectId);
       if (!post) {
         throw new NotFoundException('Post not found');
       }
@@ -224,7 +234,12 @@ export class PostService {
         throw new ForbiddenException('You are not the owner of this post');
       }
 
-      await this.postRepository.hardDeletePost(new Types.ObjectId(postId));
+      await this.postReactionRepository.deleteReactionsByPostId(postIdObjectId);
+      await this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+        postId,
+      );
+      await this.postRepository.hardDeletePost(postIdObjectId);
       void this.postsUnreadQueueService.enqueuePostDeleted(
         post.userId.toString(),
       );
@@ -234,6 +249,137 @@ export class PostService {
       }
       throw new InternalServerErrorException(
         error?.message || 'Failed to delete post',
+      );
+    }
+  }
+
+  async reactToPost(
+    userId: string,
+    postId: string,
+    reactionIcon: string,
+  ): Promise<PostReactionResponse> {
+    try {
+      const { postIdObjectId, ownerUserId } =
+        await this.assertPostExists(postId);
+      await this.assertCanReactToPost(userId, ownerUserId);
+      const reactorUserObjectId = new Types.ObjectId(userId);
+      const sanitizedReactionIcon = reactionIcon.trim();
+      if (
+        !sanitizedReactionIcon ||
+        sanitizedReactionIcon.includes(',') ||
+        !this.isSingleEmojiToken(sanitizedReactionIcon)
+      ) {
+        throw new BadRequestException(
+          'Reaction icon must be a single emoji token without comma',
+        );
+      }
+
+      const reaction = await this.postReactionRepository.upsertReaction({
+        postId: postIdObjectId,
+        reactorUserId: reactorUserObjectId,
+        postOwnerUserId: new Types.ObjectId(ownerUserId),
+        incomingReactionIcon: sanitizedReactionIcon,
+      });
+
+      // Invalidate cached actor list for this post so owner sees updates quickly.
+      await this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+        postId,
+      );
+
+      return {
+        postId: reaction.postId.toString(),
+        reactorUserId: reaction.reactorUserId.toString(),
+        reactionIcon: reaction.reactionIcon,
+        updatedAt: reaction.updatedAt,
+      };
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to react to post',
+      );
+    }
+  }
+
+  async removePostReaction(userId: string, postId: string): Promise<void> {
+    try {
+      const { postIdObjectId, ownerUserId } =
+        await this.assertPostExists(postId);
+      await this.assertCanRemovePostReaction(userId, ownerUserId);
+
+      await this.postReactionRepository.removeReaction({
+        postId: postIdObjectId,
+        reactorUserId: new Types.ObjectId(userId),
+      });
+
+      // Invalidate cached actor list for this post so owner sees updates quickly.
+      await this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+        postId,
+      );
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to remove post reaction',
+      );
+    }
+  }
+
+  async getPostReactions(
+    userId: string,
+    postId: string,
+  ): Promise<GetPostReactionsResponse> {
+    try {
+      const { postIdObjectId, ownerUserId } =
+        await this.assertPostExists(postId);
+      this.assertCanViewReactionActors(userId, ownerUserId);
+
+      return await this.cacheService.getOrCompute<GetPostReactionsResponse>(
+        REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
+        postId,
+        async () => {
+          const result = await this.postReactionRepository.findReactionActors({
+            postId: postIdObjectId,
+          });
+
+          return result.items.map((item) => ({
+            userId: item.userId.toString(),
+            username: item.username,
+            firstName: item.firstName,
+            lastName: item.lastName,
+            avatarUrls: this.userService.getAvatarUrlsForKey(item.avatarKey, {
+              sizes: [ImageSizeKey.XS],
+            }),
+            reactionIcon: item.reactionIcon,
+            reactedAt: item.reactedAt,
+          }));
+        },
+        DEFAULT_CACHE_POST_TTL,
+        {
+          deserialize: (raw) => {
+            const parsed = JSON.parse(raw) as Array<
+              Omit<GetPostReactionsResponse[number], 'reactedAt'> & {
+                reactedAt: string;
+              }
+            >;
+
+            return parsed.map((item) => ({
+              ...item,
+              reactedAt: new Date(item.reactedAt),
+            }));
+          },
+        },
+      );
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to get post reactions',
       );
     }
   }
@@ -278,7 +424,7 @@ export class PostService {
             senderAvatarUrl: avatarUrls.xs || null,
           };
         },
-        POST_UNREAD_CACHE_TTL_SECONDS,
+        DEFAULT_CACHE_POST_TTL,
       ),
       this.unreadCount(userId),
     ]);
@@ -334,5 +480,76 @@ export class PostService {
         isOwnPost: post.userId.toString() === userId,
       };
     });
+  }
+
+  private async assertPostExists(postId: string): Promise<{
+    postIdObjectId: Types.ObjectId;
+    ownerUserId: string;
+  }> {
+    if (!Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid post id');
+    }
+
+    const postIdObjectId = new Types.ObjectId(postId);
+    const post = await this.postRepository.findPostById(postIdObjectId);
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    return {
+      postIdObjectId,
+      ownerUserId: post.userId.toString(),
+    };
+  }
+
+  private async assertCanReactToPost(
+    reactorUserId: string,
+    postOwnerUserId: string,
+  ): Promise<void> {
+    if (reactorUserId === postOwnerUserId) {
+      throw new ForbiddenException('Post owner cannot react to own post');
+    }
+
+    const friendIds =
+      await this.relationshipService.getMyFriendIds(reactorUserId);
+    if (!friendIds.includes(postOwnerUserId)) {
+      throw new ForbiddenException('Only friends can react to this post');
+    }
+  }
+
+  private async assertCanRemovePostReaction(
+    reactorUserId: string,
+    postOwnerUserId: string,
+  ): Promise<void> {
+    if (reactorUserId === postOwnerUserId) {
+      throw new ForbiddenException('Post owner cannot remove own reaction');
+    }
+  }
+
+  private assertCanViewReactionActors(
+    requesterUserId: string,
+    postOwnerUserId: string,
+  ): void {
+    if (requesterUserId !== postOwnerUserId) {
+      throw new ForbiddenException(
+        'Only post owner can view detailed reaction actors',
+      );
+    }
+  }
+
+  private isSingleEmojiToken(value: string): boolean {
+    const graphemes = [...PostService.EMOJI_SEGMENTER.segment(value)];
+    if (graphemes.length !== 1) {
+      return false;
+    }
+
+    // Keycap emoji are single graphemes composed from base + VS16? + U+20E3.
+    if (/^[0-9#*]\uFE0F?\u20E3$/u.test(value)) {
+      return true;
+    }
+
+    // Accept single-grapheme emoji tokens, including flag sequences made of
+    // Regional Indicator symbols (which are not Extended_Pictographic).
+    return /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(value);
   }
 }
