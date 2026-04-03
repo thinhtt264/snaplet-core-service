@@ -27,6 +27,9 @@ export class Post extends AbstractDocument {
     default: PostVisibility.FRIEND_ONLY,
   })
   visibility: PostVisibility;
+
+  @Prop({ default: false })
+  isOwnerViewedPost: boolean;
 }
 
 export const PostSchema = SchemaFactory.createForClass(Post);

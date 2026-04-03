@@ -27,8 +27,8 @@ import {
 } from '../interfaces/post-reaction-response.interface';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { CurrentUserId } from '@common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { ReactToPostDto } from '../dto/react-to-post.dto';
 
 @Controller('posts')
@@ -47,6 +47,15 @@ export class PostController {
   @HttpCode(HttpStatus.OK)
   markSeen(@CurrentUserId() userId: string, @Body() dto: MarkSeenDto): void {
     return this.postService.markSeen(userId, dto.lastSeenPostCreatedAt);
+  }
+
+  @Patch(':postId/owner-viewed')
+  @HttpCode(HttpStatus.OK)
+  async markOwnerViewedPost(
+    @CurrentUserId() userId: string,
+    @Param() params: PostIdParamDto,
+  ): Promise<void> {
+    return this.postService.ownerViewedPost(userId, params.postId);
   }
 
   @Get('feed/newer')

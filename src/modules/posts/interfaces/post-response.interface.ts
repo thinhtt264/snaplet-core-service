@@ -13,6 +13,7 @@ export interface PostResponse extends UserBasicInfoResponse {
   visibility: string;
   createdAt: Date;
   isOwnPost: boolean;
+  isOwnerViewedPost: boolean;
 }
 
 export interface GetPostsResponse {

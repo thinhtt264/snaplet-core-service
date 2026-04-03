@@ -30,6 +30,28 @@ export class PostRepository implements IPostRepository {
     return this.postModel.findById(postId).exec();
   }
 
+  async updateOwnerViewedPostAtomic(
+    postId: Types.ObjectId,
+    ownerUserId: Types.ObjectId,
+    nextValue: boolean,
+  ): Promise<boolean> {
+    const result = await this.postModel
+      .updateOne(
+        {
+          _id: postId,
+          userId: ownerUserId,
+          isDeleted: { $ne: true },
+          isOwnerViewedPost: !nextValue,
+        },
+        {
+          $set: { isOwnerViewedPost: nextValue },
+        },
+      )
+      .exec();
+
+    return (result.modifiedCount ?? 0) > 0;
+  }
+
   async countPostsByFriendCreatedAfter(
     friendUserIds: Types.ObjectId[],
     createdAtAfter: Date,
@@ -343,6 +365,7 @@ export class PostRepository implements IPostRepository {
           userId: 1, // Keep for isOwnPost check
           caption: 1,
           visibility: 1,
+          isOwnerViewedPost: 1,
           createdAt: 1,
           user: 1,
           media: 1,
@@ -417,6 +440,7 @@ export class PostRepository implements IPostRepository {
           userId: 1,
           caption: 1,
           visibility: 1,
+          isOwnerViewedPost: 1,
           createdAt: 1,
           user: 1,
           media: 1,

@@ -4,6 +4,7 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -252,6 +253,40 @@ export class PostService {
     );
   }
 
+  async ownerViewedPost(ownerUserId: string, postId: string): Promise<void> {
+    try {
+      const postIdObjectId = new Types.ObjectId(postId);
+      const ownerUserObjectId = new Types.ObjectId(ownerUserId);
+
+      const count = await this.postRepository.updateOwnerViewedPostAtomic(
+        postIdObjectId,
+        ownerUserObjectId,
+        true,
+      );
+
+      Logger.debug(`Updated ${count} posts`);
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to clear owner viewed state',
+      );
+    }
+  }
+
+  private async markOwnerUnviewedPost(
+    postIdObjectId: Types.ObjectId,
+    ownerUserId: string,
+  ): Promise<void> {
+    await this.postRepository.updateOwnerViewedPostAtomic(
+      postIdObjectId,
+      new Types.ObjectId(ownerUserId),
+      false,
+    );
+  }
+
   async deletePost(userId: string, postId: string): Promise<void> {
     try {
       const postIdObjectId = new Types.ObjectId(postId);
@@ -310,6 +345,8 @@ export class PostService {
         postOwnerUserId: new Types.ObjectId(ownerUserId),
         incomingReactionIcon: sanitizedReactionIcon,
       });
+
+      await this.markOwnerUnviewedPost(postIdObjectId, ownerUserId);
 
       // Invalidate cached actor list for this post so owner sees updates quickly.
       await this.cacheService.invalidate(
@@ -542,6 +579,7 @@ export class PostService {
         visibility: post.visibility,
         createdAt: post.createdAt,
         isOwnPost: post.userId.toString() === userId,
+        isOwnerViewedPost: post.isOwnerViewedPost ?? false,
       };
     });
   }

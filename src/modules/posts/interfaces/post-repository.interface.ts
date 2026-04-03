@@ -44,6 +44,7 @@ export interface RawPostFromAggregation {
   createdAt: Date;
   user: RawUserFromAggregation;
   media: RawMediaFromAggregation[];
+  isOwnerViewedPost: boolean;
 }
 
 export interface RawPostActivityFromAggregation {
@@ -78,6 +79,11 @@ export interface IPostRepository {
     params: FindPostsWithCursorParams,
   ): Promise<FindPostsWithCursorResult>;
   findPostByIdWithUserInfo(postId: Types.ObjectId): Promise<any | null>;
+  updateOwnerViewedPostAtomic(
+    postId: Types.ObjectId,
+    ownerUserId: Types.ObjectId,
+    nextValue: boolean,
+  ): Promise<boolean>;
   findLatestFriendActivities(params: {
     friendIds: Types.ObjectId[];
   }): Promise<RawPostActivityFromAggregation | null>;
