@@ -4,7 +4,6 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -162,6 +161,44 @@ export class PostService {
     return this.transformPosts(posts, userId);
   }
 
+  async getPostById(userId: string, postId: string): Promise<PostResponse> {
+    try {
+      const post = await this.postRepository.findPostByIdWithUserInfo(
+        new Types.ObjectId(postId),
+      );
+      if (!post) {
+        throw new NotFoundException('Post not found');
+      }
+
+      const ownerUserId = post.userId.toString();
+      const isOwnPost = ownerUserId === userId;
+
+      if (!isOwnPost && post.visibility === PostVisibility.FRIEND_ONLY) {
+        const friendIds = await this.relationshipService.getMyFriendIds(userId);
+        if (!friendIds.includes(ownerUserId)) {
+          throw new ForbiddenException(
+            'You do not have permission to view this post',
+          );
+        }
+      }
+
+      const transformed = this.transformPosts([post], userId)[0];
+      if (!transformed) {
+        throw new NotFoundException('Post not found');
+      }
+
+      return transformed;
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to fetch post',
+      );
+    }
+  }
+
   async createPost(
     userId: string,
     mediaIds: string[],
@@ -258,13 +295,11 @@ export class PostService {
       const postIdObjectId = new Types.ObjectId(postId);
       const ownerUserObjectId = new Types.ObjectId(ownerUserId);
 
-      const count = await this.postRepository.updateOwnerViewedPostAtomic(
+      await this.postRepository.updateOwnerViewedPostAtomic(
         postIdObjectId,
         ownerUserObjectId,
         true,
       );
-
-      Logger.debug(`Updated ${count} posts`);
     } catch (error: any) {
       if (error instanceof HttpException) {
         throw error;

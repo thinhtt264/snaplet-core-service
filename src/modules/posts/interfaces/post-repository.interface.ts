@@ -78,7 +78,9 @@ export interface IPostRepository {
   findPostsWithCursor(
     params: FindPostsWithCursorParams,
   ): Promise<FindPostsWithCursorResult>;
-  findPostByIdWithUserInfo(postId: Types.ObjectId): Promise<any | null>;
+  findPostByIdWithUserInfo(
+    postId: Types.ObjectId,
+  ): Promise<RawPostFromAggregation | null>;
   updateOwnerViewedPostAtomic(
     postId: Types.ObjectId,
     ownerUserId: Types.ObjectId,

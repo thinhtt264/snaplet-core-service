@@ -378,7 +378,9 @@ export class PostRepository implements IPostRepository {
    * Find single post by ID with user info and media
    * Uses same pipeline structure as findPostsWithCursor for consistency
    */
-  async findPostByIdWithUserInfo(postId: Types.ObjectId): Promise<any | null> {
+  async findPostByIdWithUserInfo(
+    postId: Types.ObjectId,
+  ): Promise<RawPostFromAggregation | null> {
     const pipeline = [
       {
         $match: {
@@ -421,6 +423,7 @@ export class PostRepository implements IPostRepository {
             {
               $project: {
                 _id: 1,
+                ownerId: 1,
                 mimeType: 1,
                 mediaKey: 1,
                 duration: 1,
@@ -448,7 +451,9 @@ export class PostRepository implements IPostRepository {
       },
     ];
 
-    const results = await this.postModel.aggregate(pipeline as any[]).exec();
+    const results = await this.postModel
+      .aggregate<RawPostFromAggregation>(pipeline as any[])
+      .exec();
     return results.length > 0 ? results[0] : null;
   }
 }

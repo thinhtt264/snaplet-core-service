@@ -98,6 +98,15 @@ export class PostController {
     return this.postService.getPostsActivity(userId);
   }
 
+  @Get(':postId')
+  @HttpCode(HttpStatus.OK)
+  async getPostById(
+    @CurrentUserId() userId: string,
+    @Param() params: PostIdParamDto,
+  ): Promise<PostResponse> {
+    return this.postService.getPostById(userId, params.postId);
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createPost(
