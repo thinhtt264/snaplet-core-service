@@ -76,10 +76,7 @@ export class PostController {
     if (query.userIds?.length) {
       filterUserIds = query.userIds;
     } else if (query.userId) {
-      filterUserIds = query.userId
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s): s is string => Boolean(s));
+      filterUserIds = [query.userId];
     }
 
     return await this.postService.getPostsFeed(
