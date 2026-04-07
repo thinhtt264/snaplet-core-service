@@ -73,7 +73,7 @@ describe('PostService post reactions - reactToPost', () => {
       postId,
     );
 
-    expect(result.reactionIcon).toBe('🎉,😀,👍');
+    expect(result.reactionIcon).toBe('🎉 😀 👍');
   });
 
   it('rejects repeated emoji string like 🎉🎉🎉🎉', async () => {

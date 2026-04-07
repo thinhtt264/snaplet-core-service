@@ -45,6 +45,10 @@ export class User extends AbstractDocument {
 
   @Prop({ default: '' })
   deviceToken: string;
+
+  /** Single-device FCM registration token; new login overwrites previous. */
+  @Prop({ type: String, default: null })
+  fcmToken: string | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

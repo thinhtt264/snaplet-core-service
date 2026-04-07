@@ -15,11 +15,12 @@ import { UserValidationService } from '../services/user-validation.service';
 import { UserService } from '../services/user.service';
 import { CheckEmailDto } from '../dto/check-email.dto';
 import { CheckUsernameDto } from '../dto/check-username.dto';
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+import { CurrentUserId } from '@common/decorators/current-user.decorator';
 import { RequestAvatarUploadDto } from '../dto/request-avatar-upload.dto';
 import { ConfirmAvatarUploadDto } from '../dto/confirm-avatar-upload.dto';
 import { UpdateDisplayNameDto } from '../dto/update-display-name.dto';
+import { UpdateFcmTokenDto } from '../dto/update-fcm-token.dto';
 import {
   AvatarUploadRequestResponse,
   IUserProfileResponse,
@@ -105,5 +106,15 @@ export class UsersController {
       dto.firstName,
       dto.lastName,
     );
+  }
+
+  @Patch('me/fcm-token')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async updateFcmToken(
+    @CurrentUserId() userId: string,
+    @Body() dto: UpdateFcmTokenDto,
+  ): Promise<void> {
+    await this.userService.updateFcmToken(userId, dto.fcmToken);
   }
 }

@@ -235,4 +235,37 @@ export class UserRepository implements IUserRepository {
       }),
     }));
   }
+
+  async updateFcmToken(userId: string, fcmToken: string | null): Promise<void> {
+    await this.userModel.updateOne(
+      { _id: userId, isDeleted: false },
+      { $set: { fcmToken } },
+    );
+  }
+
+  async findFcmToken(userId: string): Promise<string | null> {
+    const user = await this.userModel
+      .findOne({ _id: userId, isDeleted: false })
+      .select('fcmToken')
+      .lean()
+      .exec();
+    const token = (user as { fcmToken?: string | null } | null)?.fcmToken;
+    return token ?? null;
+  }
+
+  /**
+   * Short label for push copy: first name if set, otherwise username.
+   */
+  async findReactionNotificationLabel(userId: string): Promise<string | null> {
+    const doc = await this.userModel
+      .findOne({ _id: userId, isDeleted: false })
+      .select('firstName username')
+      .lean()
+      .exec();
+    if (!doc) return null;
+    const row = doc as { firstName?: string; username?: string };
+    const first = row.firstName?.trim();
+    if (first) return first;
+    return row.username ?? null;
+  }
 }

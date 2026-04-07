@@ -26,6 +26,6 @@ import {
   ],
   controllers: [UsersController],
   providers: [UserService, UserValidationService, UserRepository],
-  exports: [UserService, UserValidationService],
+  exports: [UserService, UserValidationService, UserRepository],
 })
 export class UsersModule {}

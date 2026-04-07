@@ -18,6 +18,7 @@ import { PostVisibility } from '../schemas/post.schema';
 import { parseCursor, encodeCursor } from '../types/feed-cursor.types';
 import { PostRepository } from '../repositories/post.repository';
 import { PostReactionRepository } from '../repositories/post-reaction.repository';
+import { getCurrentReactionIcon } from '../utils/current-reaction-icon.util';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
@@ -36,6 +37,10 @@ import {
   GetPostReactionsResponse,
   PostReactionResponse,
 } from '../interfaces/post-reaction-response.interface';
+import {
+  REACTION_CREATED_FOR_NOTIFICATION_EVENT,
+  type ReactionCreatedNotificationPayload,
+} from '@modules/notifications/events/notification.events';
 
 @Injectable()
 export class PostService {
@@ -388,6 +393,22 @@ export class PostService {
         REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
         postId,
       );
+
+      setImmediate(async () => {
+        const reactorDisplayName =
+          await this.userService.getReactionNotificationLabel(userId);
+        const notificationPayload: ReactionCreatedNotificationPayload = {
+          postId,
+          postOwnerId: ownerUserId,
+          reactorId: userId,
+          reactorDisplayName,
+          reactionIcon: getCurrentReactionIcon(reaction.reactionIcon),
+        };
+        this.eventEmitter.emit(
+          REACTION_CREATED_FOR_NOTIFICATION_EVENT,
+          notificationPayload,
+        );
+      });
 
       return {
         postId: reaction.postId.toString(),

@@ -243,6 +243,17 @@ export class UserService {
     return this.buildUserProfileResponse(updatedUser);
   }
 
+  async updateFcmToken(userId: string, fcmToken: string): Promise<void> {
+    await this.userRepository.updateFcmToken(userId, fcmToken);
+  }
+
+  /** Display name for reaction push notifications (first name or username). */
+  async getReactionNotificationLabel(userId: string): Promise<string> {
+    const label =
+      await this.userRepository.findReactionNotificationLabel(userId);
+    return label?.trim() || 'Someone';
+  }
+
   async searchUsers(
     query: string,
     limit: number,
