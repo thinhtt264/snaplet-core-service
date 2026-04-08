@@ -16,6 +16,7 @@ import { AVATAR_V1_FOLDER, MAX_AVATAR_FILE_SIZE } from '@common/constants';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import { ImageSizeKey, ImageSizesResponse } from '@common/types';
 import { SearchUserItemResponse } from '../interfaces/user-search-response.interface';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 
 const AVATAR_SIZE_KEYS: ImageSizeKey[] = [
   ImageSizeKey.XS,
@@ -245,6 +246,36 @@ export class UserService {
 
   async updateFcmToken(userId: string, fcmToken: string): Promise<void> {
     await this.userRepository.updateFcmToken(userId, fcmToken);
+  }
+
+  /**
+   * Clears push registration and user-scoped cache entries used while logged in
+   * (unread/session/post-activity tags). Intended for logout.
+   */
+  async clearSessionResourcesForLogout(userId: string): Promise<void> {
+    await this.userRepository.updateFcmToken(userId, null);
+    await this.cacheService.invalidateByTags([
+      `user:${userId}`,
+      `activity:${userId}`,
+    ]);
+    await Promise.all([
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
+        userId,
+      ),
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+        userId,
+      ),
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_ACTIVITY_CACHE,
+        userId,
+      ),
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_SESSION_STATE,
+        userId,
+      ),
+    ]);
   }
 
   /** Display name for reaction push notifications (first name or username). */

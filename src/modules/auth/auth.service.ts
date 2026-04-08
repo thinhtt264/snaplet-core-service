@@ -13,6 +13,7 @@ import {
   StoredRefreshToken,
   AuthRepository,
 } from './repositories/refresh-token.repository';
+import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import {
@@ -29,6 +30,7 @@ export class AuthService {
     private readonly userService: UserService,
     private readonly userValidationService: UserValidationService,
     private readonly authRepository: AuthRepository,
+    private readonly relationshipService: RelationshipService,
   ) {}
 
   async register(
@@ -243,6 +245,8 @@ export class AuthService {
   async logout(userId: string): Promise<void> {
     try {
       await Promise.all([
+        this.userService.clearSessionResourcesForLogout(userId),
+        this.relationshipService.invalidateCachesForUser(userId),
         this.authRepository.deleteActiveAuthSession(userId),
         this.authRepository.deleteByUserId(userId),
       ]);

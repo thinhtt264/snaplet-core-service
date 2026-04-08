@@ -277,6 +277,11 @@ export class RelationshipService {
     );
   }
 
+  /** Relationship / friend-id Redis caches for this user (logout and similar). */
+  async invalidateCachesForUser(userId: string): Promise<void> {
+    await this.invalidateRelationshipsCache(userId);
+  }
+
   async create(
     initiatorId: string,
     targetUserId: string,
