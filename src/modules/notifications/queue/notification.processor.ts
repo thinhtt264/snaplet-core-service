@@ -82,6 +82,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     const {
       postOwnerId,
       postId,
+      reactorId,
       reactorDisplayName,
       actorAvatarUrl,
       reactionIcon,
@@ -92,6 +93,10 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       this.logger.debug(`No FCM token for user ${postOwnerId}, skipping`);
       return;
     }
+
+    this.logger.log(
+      `Sending reaction notification: reactorUserId=${reactorId}, recipientUserId=${postOwnerId}, postId=${postId}`,
+    );
 
     const result = await this.fcmService.sendPush({
       token: fcmToken,
