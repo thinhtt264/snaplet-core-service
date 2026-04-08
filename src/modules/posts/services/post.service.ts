@@ -395,19 +395,23 @@ export class PostService {
       );
 
       setImmediate(async () => {
-        const reactorDisplayName =
-          await this.userService.getReactionNotificationLabel(userId);
-        const notificationPayload: ReactionCreatedNotificationPayload = {
-          postId,
-          postOwnerId: ownerUserId,
-          reactorId: userId,
-          reactorDisplayName,
-          reactionIcon: getCurrentReactionIcon(reaction.reactionIcon),
-        };
-        this.eventEmitter.emit(
-          REACTION_CREATED_FOR_NOTIFICATION_EVENT,
-          notificationPayload,
-        );
+        try {
+          const reactorDisplayName =
+            await this.userService.getReactionNotificationLabel(userId);
+          const notificationPayload: ReactionCreatedNotificationPayload = {
+            postId,
+            postOwnerId: ownerUserId,
+            reactorId: userId,
+            reactorDisplayName,
+            reactionIcon: getCurrentReactionIcon(reaction.reactionIcon),
+          };
+          this.eventEmitter.emit(
+            REACTION_CREATED_FOR_NOTIFICATION_EVENT,
+            notificationPayload,
+          );
+        } catch {
+          // Preserve previous behavior: do not fail request due to async notification work.
+        }
       });
 
       return {
