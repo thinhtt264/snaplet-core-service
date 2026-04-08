@@ -561,6 +561,7 @@ export class PostService {
           );
 
           return {
+            postId: row.postId.toString(),
             imageUrl: imageUrls.md || imageUrls.original || '',
             caption: row.caption?.trim() ? row.caption : null,
             senderAvatarUrl: avatarUrls.xs || null,

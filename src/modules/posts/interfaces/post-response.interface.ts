@@ -22,6 +22,7 @@ export interface GetPostsResponse {
 }
 
 export interface PostActivityResponse {
+  postId: string;
   imageUrl: string;
   caption: string | null;
   senderAvatarUrl: string | null;
