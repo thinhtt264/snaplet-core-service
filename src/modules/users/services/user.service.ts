@@ -278,11 +278,26 @@ export class UserService {
     ]);
   }
 
-  /** Display name for reaction push notifications (first name or username). */
+  /** Display name for reaction push notifications (first name only). */
   async getReactionNotificationLabel(userId: string): Promise<string> {
     const label =
       await this.userRepository.findReactionNotificationLabel(userId);
     return label?.trim() || 'Someone';
+  }
+
+  /** Reactor avatar (XS) for reaction push payload on mobile clients. */
+  async getReactionNotificationAvatarUrl(
+    userId: string,
+  ): Promise<string | null> {
+    const user = await this.userRepository.findActiveById(userId);
+    if (!user) {
+      return null;
+    }
+
+    const avatarUrls = this.getAvatarUrlsForKey(user.avatarKey, {
+      sizes: [ImageSizeKey.XS],
+    });
+    return avatarUrls.xs || null;
   }
 
   async searchUsers(

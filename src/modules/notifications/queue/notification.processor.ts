@@ -79,7 +79,13 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleReactionPush(data: ReactionPushJobData): Promise<void> {
-    const { postOwnerId, postId, reactorDisplayName, reactionIcon } = data;
+    const {
+      postOwnerId,
+      postId,
+      reactorDisplayName,
+      actorAvatarUrl,
+      reactionIcon,
+    } = data;
 
     const fcmToken = await this.userRepository.findFcmToken(postOwnerId);
     if (!fcmToken) {
@@ -94,6 +100,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       data: {
         type: NotificationType.POST_REACTION,
         postId: String(postId),
+        actorAvatarUrl: actorAvatarUrl ?? '',
       },
     });
 

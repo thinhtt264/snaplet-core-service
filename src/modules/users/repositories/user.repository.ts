@@ -254,18 +254,17 @@ export class UserRepository implements IUserRepository {
   }
 
   /**
-   * Short label for push copy: first name if set, otherwise username.
+   * Push notification display: first name only (no username fallback).
    */
   async findReactionNotificationLabel(userId: string): Promise<string | null> {
     const doc = await this.userModel
       .findOne({ _id: userId, isDeleted: false })
-      .select('firstName username')
+      .select('firstName')
       .lean()
       .exec();
     if (!doc) return null;
-    const row = doc as { firstName?: string; username?: string };
+    const row = doc as { firstName?: string };
     const first = row.firstName?.trim();
-    if (first) return first;
-    return row.username ?? null;
+    return first || null;
   }
 }

@@ -396,13 +396,16 @@ export class PostService {
 
       setImmediate(async () => {
         try {
-          const reactorDisplayName =
-            await this.userService.getReactionNotificationLabel(userId);
+          const [reactorDisplayName, actorAvatarUrl] = await Promise.all([
+            this.userService.getReactionNotificationLabel(userId),
+            this.userService.getReactionNotificationAvatarUrl(userId),
+          ]);
           const notificationPayload: ReactionCreatedNotificationPayload = {
             postId,
             postOwnerId: ownerUserId,
             reactorId: userId,
             reactorDisplayName,
+            actorAvatarUrl,
             reactionIcon: getCurrentReactionIcon(reaction.reactionIcon),
           };
           this.eventEmitter.emit(

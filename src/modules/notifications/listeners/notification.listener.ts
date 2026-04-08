@@ -29,6 +29,7 @@ export class NotificationListener {
         postId: payload.postId,
         reactorId: payload.reactorId,
         reactorDisplayName: payload.reactorDisplayName,
+        actorAvatarUrl: payload.actorAvatarUrl,
         reactionIcon: payload.reactionIcon,
         type: NotificationType.POST_REACTION,
       });

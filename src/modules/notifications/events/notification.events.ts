@@ -6,5 +6,6 @@ export interface ReactionCreatedNotificationPayload {
   postOwnerId: string;
   reactorId: string;
   reactorDisplayName: string;
+  actorAvatarUrl: string | null;
   reactionIcon: string;
 }

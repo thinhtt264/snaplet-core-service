@@ -5,6 +5,7 @@ export interface ReactionPushJobData {
   postId: string;
   reactorId: string;
   reactorDisplayName: string;
+  actorAvatarUrl: string | null;
   reactionIcon: string;
   type: NotificationType;
 }
