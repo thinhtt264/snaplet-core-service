@@ -23,7 +23,7 @@ export enum RelationshipLimitReason {
 }
 
 export const MAX_RELATIONSHIPS_PER_USER = 30;
-export const POST_CREATE_DAILY_LIMIT = 1;
+export const POST_CREATE_DAILY_LIMIT = 10;
 export const POST_CREATE_LIMIT_TTL_SECONDS = 24 * 60 * 60; // 24h
 
 export * from './redis-keys.constants';
