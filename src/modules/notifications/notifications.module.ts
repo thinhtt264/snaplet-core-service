@@ -13,5 +13,6 @@ import { NotificationListener } from './listeners/notification.listener';
     NotificationProcessor,
     NotificationListener,
   ],
+  exports: [NotificationQueueService],
 })
 export class NotificationsModule {}

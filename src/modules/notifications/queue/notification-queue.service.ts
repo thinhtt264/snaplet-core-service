@@ -5,7 +5,10 @@ import {
   NOTIFICATION_QUEUE_NAME,
   NotificationJobName,
 } from '../constants/notification.constants';
-import type { ReactionPushJobData } from '../dto/push-notification.dto';
+import type {
+  ReactionPushJobData,
+  WidgetRefreshPushJobData,
+} from '../dto/push-notification.dto';
 
 @Injectable()
 export class NotificationQueueService implements OnModuleDestroy {
@@ -34,7 +37,7 @@ export class NotificationQueueService implements OnModuleDestroy {
       await this.queue.add(NotificationJobName.PUSH_REACTION, data, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
-        jobId: `reaction:${data.postId}:${data.reactorId}`,
+        jobId: `reaction-${data.postId}-${data.reactorId}`,
         removeOnComplete: true,
         removeOnFail: 100,
       });
@@ -42,6 +45,22 @@ export class NotificationQueueService implements OnModuleDestroy {
       const message =
         error instanceof Error ? error.message : 'unknown enqueue error';
       this.logger.warn(`Failed to enqueue reaction push: ${message}`);
+    }
+  }
+
+  async addWidgetRefreshPushJob(data: WidgetRefreshPushJobData): Promise<void> {
+    try {
+      await this.queue.add(NotificationJobName.PUSH_WIDGET_REFRESH, data, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        jobId: `widget-refresh-${data.recipientUserId}`,
+        removeOnComplete: true,
+        removeOnFail: 100,
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'unknown enqueue error';
+      this.logger.warn(`Failed to enqueue widget refresh push: ${message}`);
     }
   }
 

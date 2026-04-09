@@ -9,3 +9,8 @@ export interface ReactionPushJobData {
   reactionIcon: string;
   type: NotificationType;
 }
+
+export interface WidgetRefreshPushJobData {
+  recipientUserId: string;
+  type: NotificationType.WIDGET_REFRESH;
+}

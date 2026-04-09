@@ -19,6 +19,7 @@ import { UsersModule } from '../users/users.module';
 import { StorageModule } from '@infrastructure/storage/storage.module';
 import { PostsUnreadQueueService } from './queue/posts-unread.queue.service';
 import { PostsUnreadProcessor } from './queue/posts-unread.processor';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { PostsUnreadProcessor } from './queue/posts-unread.processor';
     RelationshipsModule,
     UsersModule,
     StorageModule,
+    NotificationsModule,
   ],
   controllers: [PostController],
   providers: [

@@ -13,7 +13,10 @@ import {
   NotificationJobName,
   NotificationType,
 } from '../constants/notification.constants';
-import type { ReactionPushJobData } from '../dto/push-notification.dto';
+import type {
+  ReactionPushJobData,
+  WidgetRefreshPushJobData,
+} from '../dto/push-notification.dto';
 import { FcmService } from '../services/fcm.service';
 
 @Injectable()
@@ -73,6 +76,11 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       case NotificationJobName.PUSH_REACTION:
         await this.handleReactionPush(job.data as ReactionPushJobData);
         return;
+      case NotificationJobName.PUSH_WIDGET_REFRESH:
+        await this.handleWidgetRefreshPush(
+          job.data as WidgetRefreshPushJobData,
+        );
+        return;
       default:
         this.logger.warn(`Unknown notification job: ${String(job.name)}`);
     }
@@ -102,11 +110,11 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       token: fcmToken,
       title: `${reactorDisplayName} reacted to your post`,
       body: reactionIcon,
-      data: {
-        type: NotificationType.POST_REACTION,
+      includeNotification: data.type !== NotificationType.WIDGET_REFRESH,
+      data: this.buildNotificationData(data.type, {
         postId: String(postId),
         actorAvatarUrl: actorAvatarUrl ?? '',
-      },
+      }),
     });
 
     if (result.shouldDeleteToken) {
@@ -120,5 +128,54 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       await this.worker.close();
     }
     await this.connection.quit();
+  }
+
+  private async handleWidgetRefreshPush(
+    data: WidgetRefreshPushJobData,
+  ): Promise<void> {
+    const fcmToken = await this.userRepository.findFcmToken(
+      data.recipientUserId,
+    );
+    if (!fcmToken) {
+      this.logger.debug(
+        `No FCM token for user ${data.recipientUserId}, skipping widget refresh`,
+      );
+      return;
+    }
+
+    const result = await this.fcmService.sendPush({
+      token: fcmToken,
+      title: '',
+      body: '',
+      includeNotification: false,
+      data: this.buildNotificationData(data.type, {
+        postId: '',
+        actorAvatarUrl: '',
+      }),
+    });
+
+    if (result.shouldDeleteToken) {
+      this.logger.log(
+        `Clearing invalid FCM token for user ${data.recipientUserId}`,
+      );
+      await this.userRepository.updateFcmToken(data.recipientUserId, null);
+    }
+  }
+
+  private buildNotificationData(
+    type: NotificationType,
+    context: { postId: string; actorAvatarUrl: string },
+  ): Record<string, string> {
+    switch (type) {
+      case NotificationType.WIDGET_REFRESH:
+        return { type };
+      case NotificationType.POST_REACTION:
+      default:
+        return {
+          type,
+          postId: context.postId,
+          actorAvatarUrl: context.actorAvatarUrl,
+        };
+    }
   }
 }

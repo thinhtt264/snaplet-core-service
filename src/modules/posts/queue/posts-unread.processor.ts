@@ -18,6 +18,8 @@ import {
   POSTS_UNREAD_JOB_MARK_SEEN,
   POSTS_UNREAD_QUEUE_NAME,
 } from './posts-unread.queue.constants';
+import { NotificationQueueService } from '@modules/notifications/queue/notification-queue.service';
+import { NotificationType } from '@modules/notifications/constants/notification.constants';
 import {
   type PostUnreadCreatedJobData,
   type PostUnreadDeletedJobData,
@@ -38,6 +40,7 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly postUnreadService: PostUnreadService,
     private readonly socketService: SocketService,
     private readonly cacheService: CacheService,
+    private readonly notificationQueueService: NotificationQueueService,
   ) {
     this.connection = this.redisService.getClient().duplicate();
   }
@@ -111,6 +114,10 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
         this.socketService.emitToUser(friendId, POSTS_UNREAD_UPDATED_EVENT, {
           count,
           seq,
+        });
+        await this.notificationQueueService.addWidgetRefreshPushJob({
+          recipientUserId: friendId,
+          type: NotificationType.WIDGET_REFRESH,
         });
       }),
     );
