@@ -135,6 +135,15 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
       data.authorId,
     );
     if (friendIds.length > 0) {
+      await Promise.all(
+        friendIds.map((friendId) =>
+          this.notificationQueueService.addWidgetRefreshPushJob({
+            recipientUserId: friendId,
+            type: NotificationType.WIDGET_REFRESH,
+          }),
+        ),
+      );
+
       await this.cacheService.invalidateMany(
         REDIS_KEY_FEATURES.POST_ACTIVITY_CACHE,
         friendIds,
