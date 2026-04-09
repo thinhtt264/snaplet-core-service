@@ -80,7 +80,6 @@ export class DeviceDailyLimitGuard implements CanActivate {
     // Inject redisKey into request so filter can clear it on error
     request.deviceRegistrationRedisKey = redisKey;
 
-    // Note: If user creation fails, the key should be deleted in auth.service or filter
     return true;
   }
 }

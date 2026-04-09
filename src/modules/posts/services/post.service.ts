@@ -33,6 +33,9 @@ import { PostUnreadService } from './post-unread.service';
 import { PostsUnreadQueueService } from '../queue/posts-unread.queue.service';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
 import { CacheService } from '@modules/cache/cache.service';
+import { RedisService } from '@common/redis/redis.service';
+import { buildRedisKey } from '@common/utils';
+import { throwPostCreateLimitExceeded } from '@common/utils';
 import {
   GetPostReactionsResponse,
   PostReactionResponse,
@@ -41,6 +44,10 @@ import {
   REACTION_CREATED_FOR_NOTIFICATION_EVENT,
   type ReactionCreatedNotificationPayload,
 } from '@modules/notifications/events/notification.events';
+import {
+  POST_CREATE_DAILY_LIMIT,
+  POST_CREATE_LIMIT_TTL_SECONDS,
+} from '@common/constants';
 
 @Injectable()
 export class PostService {
@@ -55,6 +62,7 @@ export class PostService {
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
     private readonly cacheService: CacheService,
+    private readonly redisService: RedisService,
     private readonly postUnreadService: PostUnreadService,
     private readonly postsUnreadQueueService: PostsUnreadQueueService,
     private readonly eventEmitter: EventEmitter2,
@@ -210,6 +218,7 @@ export class PostService {
     caption?: string,
     visibility?: PostVisibility,
   ): Promise<{ id: string; createdAt: Date }> {
+    await this.assertCanCreatePost(userId);
     await this.mediaService.assertMediaReadyAndOwned(mediaIds, userId);
 
     const post = await this.postRepository.create({
@@ -230,6 +239,33 @@ export class PostService {
       id: post._id.toString(),
       createdAt: post.createdAt,
     };
+  }
+
+  private async assertCanCreatePost(userId: string): Promise<void> {
+    // Soft dependency: when Redis is unavailable, do not block post creation.
+    if (!this.redisService.isRedisAvailable()) {
+      return;
+    }
+
+    const redisKey = buildRedisKey(
+      REDIS_KEY_FEATURES.POST_CREATE_DAILY_LIMIT,
+      userId,
+    );
+    const currentCount = await this.redisService.incr(redisKey);
+
+    if (currentCount === 1) {
+      await this.redisService.expire(redisKey, POST_CREATE_LIMIT_TTL_SECONDS);
+    }
+
+    if (currentCount > POST_CREATE_DAILY_LIMIT) {
+      const ttl = await this.redisService.ttl(redisKey);
+      const hoursRemaining = ttl > 0 ? Math.ceil(ttl / 3600) : 24;
+      throwPostCreateLimitExceeded(
+        POST_CREATE_DAILY_LIMIT,
+        currentCount,
+        hoursRemaining,
+      );
+    }
   }
 
   async unreadCount(userId: string): Promise<{ count: number }> {

@@ -16,6 +16,7 @@ export const REDIS_KEY_FEATURES = {
   POST_UNREAD_COUNT_CACHE: 'post:unread_count_cache',
   POST_SESSION_STATE: 'post:session_state',
   POST_ACTIVITY_CACHE: 'post:activity_cache',
+  POST_CREATE_DAILY_LIMIT: 'post:create_daily_limit',
   // Post reactions (owner actor list)
   POST_REACTIONS_CACHE: 'post:reactions_cache',
 } as const;

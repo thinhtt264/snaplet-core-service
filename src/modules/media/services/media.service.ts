@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  HttpException,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
@@ -17,9 +18,16 @@ import {
 } from '../interfaces/media-response.interface';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import { CacheService } from '@modules/cache/cache.service';
-import { IMAGE_V1_FOLDER, MAX_MEDIA_FILE_SIZE } from '@common/constants';
+import {
+  IMAGE_V1_FOLDER,
+  MAX_MEDIA_FILE_SIZE,
+  POST_CREATE_DAILY_LIMIT,
+  REDIS_KEY_FEATURES,
+} from '@common/constants';
 import { ImageSizeKey } from '@common/types';
 import type { ImageSizesResponse } from '@common/types';
+import { RedisService } from '@common/redis/redis.service';
+import { buildRedisKey, throwPostCreateLimitExceeded } from '@common/utils';
 
 const MEDIA_SIZE_KEYS: ImageSizeKey[] = [
   ImageSizeKey.XS,
@@ -34,6 +42,7 @@ export class MediaService {
     private readonly mediaRepository: MediaRepository,
     private readonly storageService: StorageService,
     private readonly cacheService: CacheService,
+    private readonly redisService: RedisService,
   ) {}
 
   async requestBatchUpload(
@@ -41,6 +50,7 @@ export class MediaService {
     mediaItems: MediaUploadItem[],
   ): Promise<BatchUploadRequestResponse> {
     try {
+      await this.assertCanCreatePost(ownerId);
       const items: BatchUploadItemResponse[] = [];
 
       for (const item of mediaItems) {
@@ -69,9 +79,37 @@ export class MediaService {
       }
 
       return { data: items };
-    } catch (error) {
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new InternalServerErrorException(
-        error.message || 'Failed to request batch upload',
+        error?.message || 'Failed to request batch upload',
+      );
+    }
+  }
+
+  private async assertCanCreatePost(userId: string): Promise<void> {
+    // Soft dependency: allow request when Redis is unavailable.
+    if (!this.redisService.isRedisAvailable()) {
+      return;
+    }
+
+    const redisKey = buildRedisKey(
+      REDIS_KEY_FEATURES.POST_CREATE_DAILY_LIMIT,
+      userId,
+    );
+    const currentRaw = await this.redisService.get(redisKey);
+    const currentCount = Number.parseInt(currentRaw ?? '0', 10);
+    const safeCurrentCount = Number.isFinite(currentCount) ? currentCount : 0;
+
+    if (safeCurrentCount >= POST_CREATE_DAILY_LIMIT) {
+      const ttl = await this.redisService.ttl(redisKey);
+      const hoursRemaining = ttl > 0 ? Math.ceil(ttl / 3600) : 24;
+      throwPostCreateLimitExceeded(
+        POST_CREATE_DAILY_LIMIT,
+        safeCurrentCount,
+        hoursRemaining,
       );
     }
   }
@@ -81,6 +119,7 @@ export class MediaService {
     dto: ConfirmUploadDto,
   ): Promise<ConfirmUploadResponse> {
     try {
+      await this.assertCanCreatePost(ownerId);
       const ownerObjectId = new Types.ObjectId(ownerId);
       const mediaIds = dto.mediaIds.map((id) => new Types.ObjectId(id));
       const confirmedMedia: MediaBaseResponse[] = [];
@@ -142,15 +181,12 @@ export class MediaService {
             ? 'Upload confirmed and processing started'
             : `${confirmedMedia.length} uploads confirmed and processing started`,
       };
-    } catch (error) {
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      ) {
+    } catch (error: any) {
+      if (error instanceof HttpException) {
         throw error;
       }
       throw new InternalServerErrorException(
-        error.message || 'Failed to confirm upload',
+        error?.message || 'Failed to confirm upload',
       );
     }
   }

@@ -30,7 +30,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let errorMessage = 'Internal server error';
     let metaData: any = undefined;
 
-    // Xử lý AppException (custom exception với errorCode và meta)
     if (AppException.isAppException(exception)) {
       errorMessage = exception.getErrorMessage();
       metaData = {
@@ -38,21 +37,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message: exception.getErrorMessage(),
         ...(exception.getErrorMeta() || {}),
       };
-    }
-    // Xử lý HttpException thông thường (NestJS standard exceptions)
-    else if (exception instanceof HttpException) {
+    } else if (exception instanceof HttpException) {
       const exceptionResponse = exception.getResponse();
 
       if (typeof exceptionResponse === 'string') {
         errorMessage = exceptionResponse;
       } else {
-        // Xử lý object response từ NestJS exceptions
         const responseObj = exceptionResponse as any;
         errorMessage = responseObj?.message || exception.message;
       }
-    }
-    // Xử lý các exception không phải HttpException
-    else {
+    } else {
       errorMessage = 'Internal server error';
     }
 

@@ -69,3 +69,20 @@ export function throwInvalidCredentials(): never {
     'Invalid email or password',
   );
 }
+
+export function throwPostCreateLimitExceeded(
+  limit: number,
+  currentCount: number,
+  hoursRemaining: number,
+): never {
+  throw new AppException(
+    HttpStatus.TOO_MANY_REQUESTS,
+    ErrorCode.POST_CREATE_LIMIT_EXCEEDED,
+    `Post upload limit reached. You can create up to ${limit} posts per 24 hours.`,
+    {
+      limit,
+      currentCount,
+      hoursRemaining,
+    },
+  );
+}
