@@ -218,33 +218,41 @@ export class PostService {
     caption?: string,
     visibility?: PostVisibility,
   ): Promise<{ id: string; createdAt: Date }> {
-    await this.assertCanCreatePost(userId);
     await this.mediaService.assertMediaReadyAndOwned(mediaIds, userId);
+    const quotaRedisKey = await this.assertCanCreatePost(userId);
 
-    const post = await this.postRepository.create({
-      userId: new Types.ObjectId(userId),
-      mediaIds: mediaIds.map((id) => new Types.ObjectId(id)),
-      caption: caption ?? '',
-      visibility: visibility ?? PostVisibility.FRIEND_ONLY,
-    });
+    try {
+      const post = await this.postRepository.create({
+        userId: new Types.ObjectId(userId),
+        mediaIds: mediaIds.map((id) => new Types.ObjectId(id)),
+        caption: caption ?? '',
+        visibility: visibility ?? PostVisibility.FRIEND_ONLY,
+      });
 
-    setImmediate(() => {
-      this.eventEmitter.emit(POST_CREATED_EVENT, {
-        authorId: userId,
-        postCreatedAt: post.createdAt,
-      } as PostCreatedEvent);
-    });
+      setImmediate(() => {
+        this.eventEmitter.emit(POST_CREATED_EVENT, {
+          authorId: userId,
+          postCreatedAt: post.createdAt,
+        } as PostCreatedEvent);
+      });
 
-    return {
-      id: post._id.toString(),
-      createdAt: post.createdAt,
-    };
+      return {
+        id: post._id.toString(),
+        createdAt: post.createdAt,
+      };
+    } catch (error) {
+      if (quotaRedisKey) {
+        await this.releaseCreatePostQuota(quotaRedisKey);
+      }
+
+      throw error;
+    }
   }
 
-  private async assertCanCreatePost(userId: string): Promise<void> {
+  private async assertCanCreatePost(userId: string): Promise<string | null> {
     // Soft dependency: when Redis is unavailable, do not block post creation.
     if (!this.redisService.isRedisAvailable()) {
-      return;
+      return null;
     }
 
     const redisKey = buildRedisKey(
@@ -265,6 +273,20 @@ export class PostService {
         currentCount,
         hoursRemaining,
       );
+    }
+
+    return redisKey;
+  }
+
+  private async releaseCreatePostQuota(redisKey: string): Promise<void> {
+    // Best-effort rollback for failed create paths after quota reservation.
+    if (!this.redisService.isRedisAvailable()) {
+      return;
+    }
+
+    const nextCount = await this.redisService.decr(redisKey);
+    if (nextCount <= 0) {
+      await this.redisService.del(redisKey);
     }
   }
 
