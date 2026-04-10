@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Post } from '../schemas/post.schema';
+import { Post, PostVisibility } from '../schemas/post.schema';
 import {
   IPostRepository,
   FindPostsWithCursorParams,
@@ -16,6 +16,200 @@ export class PostRepository implements IPostRepository {
   constructor(
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
   ) {}
+
+  private buildMainFeedMatch(params: {
+    requesterUserId: Types.ObjectId;
+    friendUserIds: Types.ObjectId[];
+    extraMatch?: Record<string, any>;
+  }): Record<string, any> {
+    const { requesterUserId, friendUserIds, extraMatch } = params;
+    return {
+      isDeleted: { $ne: true },
+      $or: [
+        { userId: requesterUserId },
+        {
+          userId: { $in: friendUserIds },
+          visibility: PostVisibility.FRIEND_ONLY,
+        },
+      ],
+      ...(extraMatch ?? {}),
+    };
+  }
+
+  /**
+   * Selected-users query is intentionally constrained to friend authors only,
+   * so we can keep using the existing `userId + createdAt` compound index and
+   * avoid relying on a multikey index on `allowedViewerUserIds`.
+   */
+  private buildSelectedFeedMatch(params: {
+    requesterUserId: Types.ObjectId;
+    friendUserIds: Types.ObjectId[];
+    extraMatch?: Record<string, any>;
+  }): Record<string, any> | null {
+    const { requesterUserId, friendUserIds, extraMatch } = params;
+    if (friendUserIds.length === 0) {
+      return null;
+    }
+
+    return {
+      isDeleted: { $ne: true },
+      userId: { $in: friendUserIds },
+      visibility: PostVisibility.SELECTED_USERS,
+      allowedViewerUserIds: requesterUserId,
+      ...(extraMatch ?? {}),
+    };
+  }
+
+  private buildCursorCondition(
+    cursor?: FeedCursor | null,
+  ): Record<string, any> {
+    if (!cursor) {
+      return {};
+    }
+
+    return {
+      $or: [
+        { createdAt: { $lt: cursor.createdAt } },
+        {
+          createdAt: cursor.createdAt,
+          _id: { $lt: cursor._id },
+        },
+      ],
+    };
+  }
+
+  private buildLookupStages(): any[] {
+    return [
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user',
+          pipeline: [
+            {
+              $project: {
+                username: 1,
+                firstName: 1,
+                lastName: 1,
+                avatarKey: 1,
+              },
+            },
+          ],
+        },
+      },
+      { $unwind: '$user' },
+      {
+        $lookup: {
+          from: 'media',
+          localField: 'mediaIds',
+          foreignField: '_id',
+          as: 'media',
+          pipeline: [
+            {
+              $match: {
+                isDeleted: { $ne: true },
+                status: 'READY',
+              },
+            },
+            {
+              $project: {
+                _id: 1,
+                ownerId: 1,
+                mimeType: 1,
+                mediaKey: 1,
+                duration: 1,
+                transform: 1,
+                status: 1,
+                createdAt: 1,
+                updatedAt: 1,
+              },
+            },
+            { $sort: { createdAt: 1 } },
+          ],
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          userId: 1, // Keep for isOwnPost check
+          caption: 1,
+          visibility: 1,
+          isOwnerViewedPost: 1,
+          createdAt: 1,
+          user: 1,
+          media: 1,
+        },
+      },
+    ];
+  }
+
+  private async fetchFeedTwoQueries(params: {
+    requesterUserId: Types.ObjectId;
+    friendUserIds: Types.ObjectId[];
+    authorUserIds?: Types.ObjectId[];
+    limit: number;
+    cursor?: FeedCursor | null;
+  }): Promise<RawPostFromAggregation[]> {
+    const { requesterUserId, friendUserIds, authorUserIds, limit, cursor } =
+      params;
+
+    const cursorCondition = this.buildCursorCondition(cursor);
+    const withCursor = (match: Record<string, any>) =>
+      cursorCondition && Object.keys(cursorCondition).length > 0
+        ? { ...match, $and: [...(match.$and ?? []), cursorCondition] }
+        : match;
+
+    const mainMatch = withCursor(
+      this.buildMainFeedMatch({
+        requesterUserId,
+        friendUserIds,
+        extraMatch: authorUserIds?.length
+          ? { userId: { $in: authorUserIds } }
+          : undefined,
+      }),
+    );
+
+    const selectedBase = this.buildSelectedFeedMatch({
+      requesterUserId,
+      friendUserIds,
+      extraMatch: authorUserIds?.length
+        ? { userId: { $in: authorUserIds } }
+        : undefined,
+    });
+    const selectedMatch = selectedBase ? withCursor(selectedBase) : null;
+
+    const lookupStages = this.buildLookupStages();
+
+    const runQuery = (match: Record<string, any>) =>
+      this.postModel
+        .aggregate<RawPostFromAggregation>([
+          { $match: match },
+          { $sort: { createdAt: -1, _id: -1 } },
+          { $limit: limit + 1 },
+          ...lookupStages,
+        ])
+        .exec();
+
+    const [mainRows, selectedRows] = await Promise.all([
+      runQuery(mainMatch),
+      selectedMatch ? runQuery(selectedMatch) : Promise.resolve([]),
+    ]);
+
+    const merged = [...mainRows, ...selectedRows].sort((a, b) => {
+      const diff = b.createdAt.getTime() - a.createdAt.getTime();
+      if (diff !== 0) return diff;
+      return b._id.toString() > a._id.toString() ? 1 : -1;
+    });
+
+    const seen = new Set<string>();
+    return merged.filter((p) => {
+      const key = p._id.toString();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
 
   async create(post: Partial<Post>): Promise<Post> {
     const createdPost = new this.postModel(post);
@@ -53,6 +247,7 @@ export class PostRepository implements IPostRepository {
   }
 
   async countPostsByFriendCreatedAfter(
+    requesterUserId: Types.ObjectId,
     friendUserIds: Types.ObjectId[],
     createdAtAfter: Date,
     max: number,
@@ -63,9 +258,20 @@ export class PostRepository implements IPostRepository {
       .aggregate<{ n: number }>([
         {
           $match: {
-            userId: { $in: friendUserIds },
-            createdAt: { $gt: createdAtAfter },
             isDeleted: { $ne: true },
+            createdAt: { $gt: createdAtAfter },
+            $or: [
+              // Friend-only posts from friends
+              {
+                userId: { $in: friendUserIds },
+                visibility: PostVisibility.FRIEND_ONLY,
+              },
+              // Selected-users posts where requester is included
+              {
+                visibility: PostVisibility.SELECTED_USERS,
+                allowedViewerUserIds: requesterUserId,
+              },
+            ],
           },
         },
         { $limit: limit },
@@ -79,11 +285,16 @@ export class PostRepository implements IPostRepository {
   async findPostsWithCursor(
     params: FindPostsWithCursorParams,
   ): Promise<FindPostsWithCursorResult> {
-    const { userIds, limit, cursor } = params;
+    const { requesterUserId, friendUserIds, authorUserIds, limit, cursor } =
+      params;
 
-    const pipeline = this.buildFeedPipeline({ userIds, limit, cursor });
-
-    const results = await this.postModel.aggregate(pipeline as any[]).exec();
+    const results = await this.fetchFeedTwoQueries({
+      requesterUserId,
+      friendUserIds,
+      authorUserIds,
+      limit,
+      cursor,
+    });
 
     // Check if there's a next page (we fetched limit + 1)
     const hasNext = results.length > limit;
@@ -108,10 +319,11 @@ export class PostRepository implements IPostRepository {
 
   async findNewer(params: {
     friendIds: Types.ObjectId[];
+    requesterUserId: Types.ObjectId;
     since: Date;
     limit: number;
   }): Promise<RawPostFromAggregation[]> {
-    const { friendIds, since, limit } = params;
+    const { friendIds, requesterUserId, since, limit } = params;
 
     if (friendIds.length === 0 || limit < 1) return [];
 
@@ -119,9 +331,18 @@ export class PostRepository implements IPostRepository {
       .aggregate<RawPostFromAggregation>([
         {
           $match: {
-            userId: { $in: friendIds },
-            createdAt: { $gt: since }, // strictly greater than (avoid returning top item client already has)
             isDeleted: { $ne: true },
+            createdAt: { $gt: since }, // strictly greater than (avoid returning top item client already has)
+            $or: [
+              {
+                userId: { $in: friendIds },
+                visibility: PostVisibility.FRIEND_ONLY,
+              },
+              {
+                visibility: PostVisibility.SELECTED_USERS,
+                allowedViewerUserIds: requesterUserId,
+              },
+            ],
           },
         },
         { $sort: { createdAt: -1, _id: -1 } },
@@ -192,8 +413,9 @@ export class PostRepository implements IPostRepository {
 
   async findLatestFriendActivities(params: {
     friendIds: Types.ObjectId[];
+    requesterUserId: Types.ObjectId;
   }): Promise<RawPostActivityFromAggregation | null> {
-    const { friendIds } = params;
+    const { friendIds, requesterUserId } = params;
     if (friendIds.length === 0) {
       return null;
     }
@@ -202,8 +424,17 @@ export class PostRepository implements IPostRepository {
       .aggregate<RawPostActivityFromAggregation>([
         {
           $match: {
-            userId: { $in: friendIds },
             isDeleted: { $ne: true },
+            $or: [
+              {
+                userId: { $in: friendIds },
+                visibility: PostVisibility.FRIEND_ONLY,
+              },
+              {
+                visibility: PostVisibility.SELECTED_USERS,
+                allowedViewerUserIds: requesterUserId,
+              },
+            ],
           },
         },
         { $sort: { createdAt: -1, _id: -1 } },
@@ -258,121 +489,7 @@ export class PostRepository implements IPostRepository {
     return rows[0] ?? null;
   }
 
-  /**
-   * Build optimized feed pipeline for cursor-based pagination
-   * Performance optimizations:
-   * 1. $match + cursor filter first (uses index)
-   * 2. $sort uses compound index (createdAt: -1, _id: -1)
-   * 3. $limit before $lookup (reduces join operations)
-   * 4. Filter media early (status: READY, isDeleted)
-   */
-  private buildFeedPipeline(params: {
-    userIds: Types.ObjectId[];
-    limit: number;
-    cursor?: FeedCursor | null;
-  }) {
-    const { userIds, limit, cursor } = params;
-
-    const matchStage: any = {
-      userId: { $in: userIds },
-      isDeleted: { $ne: true },
-    };
-
-    // Cursor condition (AFTER cursor position)
-    // Uses compound comparison: createdAt < cursor.createdAt OR
-    // (createdAt = cursor.createdAt AND _id < cursor._id)
-    if (cursor) {
-      matchStage.$or = [
-        { createdAt: { $lt: cursor.createdAt } },
-        {
-          createdAt: cursor.createdAt,
-          _id: { $lt: cursor._id },
-        },
-      ];
-    }
-
-    return [
-      // 1️⃣ FILTER + CURSOR (uses index: idx_userId_createdAt_id_active)
-      { $match: matchStage },
-
-      // 2️⃣ SORT STABLE (uses index: idx_createdAt_id_active)
-      // Compound sort ensures stable pagination even with duplicate createdAt
-      { $sort: { createdAt: -1, _id: -1 } },
-
-      // 3️⃣ FETCH EXTRA 1 ITEM (detect hasNext)
-      // Limit BEFORE lookup to reduce join operations
-      { $limit: limit + 1 },
-
-      // 4️⃣ JOIN USER (only for limited documents)
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'user',
-          pipeline: [
-            {
-              $project: {
-                username: 1,
-                firstName: 1,
-                lastName: 1,
-                avatarKey: 1,
-              },
-            },
-          ],
-        },
-      },
-      { $unwind: '$user' },
-
-      // 5️⃣ JOIN MEDIA (only for limited documents)
-      // Filter early: only READY media, not deleted
-      {
-        $lookup: {
-          from: 'media',
-          localField: 'mediaIds',
-          foreignField: '_id',
-          as: 'media',
-          pipeline: [
-            {
-              $match: {
-                isDeleted: { $ne: true },
-                status: 'READY',
-              },
-            },
-            {
-              $project: {
-                _id: 1,
-                ownerId: 1,
-                mimeType: 1,
-                mediaKey: 1,
-                duration: 1,
-                transform: 1,
-                status: 1,
-                createdAt: 1,
-                updatedAt: 1,
-              },
-            },
-            // Sort media by creation order (optional)
-            { $sort: { createdAt: 1 } },
-          ],
-        },
-      },
-
-      // 6️⃣ SHAPE RESPONSE (only needed fields)
-      {
-        $project: {
-          _id: 1,
-          userId: 1, // Keep for isOwnPost check
-          caption: 1,
-          visibility: 1,
-          isOwnerViewedPost: 1,
-          createdAt: 1,
-          user: 1,
-          media: 1,
-        },
-      },
-    ];
-  }
+  // (buildFeedPipeline removed in favor of two-query pattern)
 
   /**
    * Find single post by ID with user info and media

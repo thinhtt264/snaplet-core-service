@@ -20,6 +20,7 @@ describe('PostService post reactions - reactToPost', () => {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
       }),
+      updateOwnerViewedPostAtomic: jest.fn().mockResolvedValue(true),
     };
 
     const postReactionRepository = {
@@ -54,6 +55,7 @@ describe('PostService post reactions - reactToPost', () => {
       cacheService as any,
       {} as any,
       {} as any,
+      {} as any,
       eventEmitter,
     );
 
@@ -85,6 +87,7 @@ describe('PostService post reactions - reactToPost', () => {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
       }),
+      updateOwnerViewedPostAtomic: jest.fn().mockResolvedValue(true),
     };
 
     const postReactionRepository = {
@@ -112,6 +115,7 @@ describe('PostService post reactions - reactToPost', () => {
       cacheService as any,
       {} as any,
       {} as any,
+      {} as any,
       eventEmitter,
     );
 
@@ -132,6 +136,7 @@ describe('PostService post reactions - reactToPost', () => {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
       }),
+      updateOwnerViewedPostAtomic: jest.fn().mockResolvedValue(true),
     };
 
     const postReactionRepository = {
@@ -165,6 +170,7 @@ describe('PostService post reactions - reactToPost', () => {
       cacheService as any,
       {} as any,
       {} as any,
+      {} as any,
       eventEmitter,
     );
 
@@ -188,6 +194,7 @@ describe('PostService post reactions - reactToPost', () => {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
       }),
+      updateOwnerViewedPostAtomic: jest.fn().mockResolvedValue(true),
     };
 
     const postReactionRepository = {
@@ -219,6 +226,7 @@ describe('PostService post reactions - reactToPost', () => {
       relationshipService as any,
       {} as any,
       cacheService as any,
+      {} as any,
       {} as any,
       {} as any,
       eventEmitter,
@@ -273,6 +281,7 @@ describe('PostService - deletePost', () => {
       {} as any,
       {} as any,
       cacheService as any,
+      {} as any,
       {} as any,
       postsUnreadQueueService as any,
       eventEmitter,

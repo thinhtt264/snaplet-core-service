@@ -85,12 +85,9 @@ export class PostService {
         (id) => new Types.ObjectId(id),
       );
 
-      const userIds = [userObjectId, ...friendUserIds];
-
-      // Optional filter: when requester passes `userIds`, only include posts
-      // from those authors that are within the allowed visibility scope:
-      // self or accepted friends.
-      let effectiveUserIds = userIds;
+      // Optional author filter: keep only requested author ids that are valid.
+      // Visibility enforcement is handled in repository query using requester + friends + selected-list rules.
+      let effectiveAuthorUserIds: Types.ObjectId[] | undefined;
       if (filterUserIds?.length) {
         const uniqueFilterUserIds = Array.from(new Set(filterUserIds));
         for (const uid of uniqueFilterUserIds) {
@@ -98,29 +95,16 @@ export class PostService {
             throw new BadRequestException('Invalid user id');
           }
         }
-
-        const allowedUserIdStrings = new Set(
-          userIds.map((id) => id.toString()),
-        );
-        const filterObjectIds = uniqueFilterUserIds.map(
+        effectiveAuthorUserIds = uniqueFilterUserIds.map(
           (uid) => new Types.ObjectId(uid),
         );
-
-        effectiveUserIds = filterObjectIds.filter((id) =>
-          allowedUserIdStrings.has(id.toString()),
-        );
-      }
-
-      if (effectiveUserIds.length === 0) {
-        return {
-          data: [],
-          pagination: { limit, nextCursor: null },
-        };
       }
 
       const parsedCursor = parseCursor(cursor);
       const result = await this.postRepository.findPostsWithCursor({
-        userIds: effectiveUserIds,
+        requesterUserId: userObjectId,
+        friendUserIds,
+        authorUserIds: effectiveAuthorUserIds,
         limit,
         cursor: parsedCursor,
       });
@@ -164,9 +148,11 @@ export class PostService {
       return [];
     }
 
+    const requesterUserObjectId = new Types.ObjectId(userId);
     const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
     const posts = await this.postRepository.findNewer({
       friendIds: friendObjectIds,
+      requesterUserId: requesterUserObjectId,
       since,
       limit,
     });
@@ -186,12 +172,32 @@ export class PostService {
       const ownerUserId = post.userId.toString();
       const isOwnPost = ownerUserId === userId;
 
-      if (!isOwnPost && post.visibility === PostVisibility.FRIEND_ONLY) {
-        const friendIds = await this.relationshipService.getMyFriendIds(userId);
-        if (!friendIds.includes(ownerUserId)) {
+      if (!isOwnPost) {
+        if (post.visibility === PostVisibility.ME_ONLY) {
           throw new ForbiddenException(
             'You do not have permission to view this post',
           );
+        }
+
+        if (post.visibility === PostVisibility.FRIEND_ONLY) {
+          const friendIds =
+            await this.relationshipService.getMyFriendIds(userId);
+          if (!friendIds.includes(ownerUserId)) {
+            throw new ForbiddenException(
+              'You do not have permission to view this post',
+            );
+          }
+        }
+
+        if (post.visibility === PostVisibility.SELECTED_USERS) {
+          const isAllowed =
+            post.allowedViewerUserIds?.some((id) => id.toString() === userId) ??
+            false;
+          if (!isAllowed) {
+            throw new ForbiddenException(
+              'You do not have permission to view this post',
+            );
+          }
         }
       }
 
@@ -217,16 +223,52 @@ export class PostService {
     mediaIds: string[],
     caption?: string,
     visibility?: PostVisibility,
+    allowedViewerUserIds?: string[],
   ): Promise<{ id: string; createdAt: Date }> {
     await this.mediaService.assertMediaReadyAndOwned(mediaIds, userId);
     const quotaRedisKey = await this.assertCanCreatePost(userId);
 
     try {
+      const resolvedVisibility = visibility ?? PostVisibility.FRIEND_ONLY;
+      let resolvedAllowedViewerUserIds: Types.ObjectId[] | undefined;
+
+      if (resolvedVisibility === PostVisibility.SELECTED_USERS) {
+        const incoming = allowedViewerUserIds ?? [];
+        if (incoming.length === 0) {
+          throw new BadRequestException(
+            'allowedViewerUserIds is required for selected-users visibility',
+          );
+        }
+
+        const unique = Array.from(new Set(incoming));
+        for (const uid of unique) {
+          if (!Types.ObjectId.isValid(uid)) {
+            throw new BadRequestException('Invalid user id');
+          }
+        }
+
+        // Refactor note: selected-users is treated as a "friends-only allowlist".
+        // This keeps feed queries efficient without requiring a multikey index on allowedViewerUserIds.
+        const friendIds = await this.relationshipService.getMyFriendIds(userId);
+        const friendSet = new Set(friendIds);
+        for (const uid of unique) {
+          if (!friendSet.has(uid)) {
+            throw new BadRequestException(
+              'allowedViewerUserIds must be a subset of your accepted friends',
+            );
+          }
+        }
+        resolvedAllowedViewerUserIds = unique.map(
+          (id) => new Types.ObjectId(id),
+        );
+      }
+
       const post = await this.postRepository.create({
         userId: new Types.ObjectId(userId),
         mediaIds: mediaIds.map((id) => new Types.ObjectId(id)),
         caption: caption ?? '',
-        visibility: visibility ?? PostVisibility.FRIEND_ONLY,
+        visibility: resolvedVisibility,
+        allowedViewerUserIds: resolvedAllowedViewerUserIds,
       });
 
       setImmediate(() => {
@@ -311,6 +353,7 @@ export class PostService {
         const friendIds = await this.relationshipService.getMyFriendIds(userId);
         const friendObjectIds = friendIds.map((id) => new Types.ObjectId(id));
         return this.postRepository.countPostsByFriendCreatedAfter(
+          new Types.ObjectId(userId),
           friendObjectIds,
           lastSeenAt,
           POST_UNREAD_COUNT_MAX,
@@ -478,7 +521,7 @@ export class PostService {
       return {
         postId: reaction.postId.toString(),
         reactorUserId: reaction.reactorUserId.toString(),
-        reactionIcon: reaction.reactionIcon,
+        reactionIcon: getCurrentReactionIcon(reaction.reactionIcon),
         updatedAt: reaction.updatedAt,
       };
     } catch (error: any) {
@@ -600,6 +643,7 @@ export class PostService {
 
           const row = await this.postRepository.findLatestFriendActivities({
             friendIds: friendIds.map((id) => new Types.ObjectId(id)),
+            requesterUserId: new Types.ObjectId(userId),
           });
           if (!row || !row.postId || !row.authorUserId || !row.mediaId) {
             return null;
