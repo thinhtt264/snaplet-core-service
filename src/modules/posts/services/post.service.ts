@@ -36,6 +36,7 @@ import { CacheService } from '@modules/cache/cache.service';
 import { RedisService } from '@common/redis/redis.service';
 import { buildRedisKey } from '@common/utils';
 import { throwPostCreateLimitExceeded } from '@common/utils';
+import { PostAudienceService } from './post-audience.service';
 import {
   GetPostReactionsResponse,
   PostReactionResponse,
@@ -60,6 +61,7 @@ export class PostService {
     private readonly postReactionRepository: PostReactionRepository,
     private readonly mediaService: MediaService,
     private readonly relationshipService: RelationshipService,
+    private readonly postAudienceService: PostAudienceService,
     private readonly userService: UserService,
     private readonly cacheService: CacheService,
     private readonly redisService: RedisService,
@@ -270,11 +272,18 @@ export class PostService {
         visibility: resolvedVisibility,
         allowedViewerUserIds: resolvedAllowedViewerUserIds,
       });
+      const recipientUserIds =
+        await this.postAudienceService.resolveRecipientUserIds({
+          authorId: userId,
+          visibility: resolvedVisibility,
+          allowedViewerUserIds: resolvedAllowedViewerUserIds,
+        });
 
       setImmediate(() => {
         this.eventEmitter.emit(POST_CREATED_EVENT, {
           authorId: userId,
           postCreatedAt: post.createdAt,
+          recipientUserIds,
         } as PostCreatedEvent);
       });
 
@@ -446,8 +455,15 @@ export class PostService {
       );
       await this.cacheService.invalidateByTag(`post:${postId}`);
       await this.postRepository.hardDeletePost(postIdObjectId);
+      const recipientUserIds =
+        await this.postAudienceService.resolveRecipientUserIds({
+          authorId: post.userId.toString(),
+          visibility: post.visibility,
+          allowedViewerUserIds: post.allowedViewerUserIds,
+        });
       void this.postsUnreadQueueService.enqueuePostDeleted(
         post.userId.toString(),
+        recipientUserIds,
       );
     } catch (error: any) {
       if (error instanceof HttpException) {

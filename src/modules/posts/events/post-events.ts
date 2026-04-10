@@ -6,4 +6,5 @@ export const POST_CREATED_EVENT = 'post.created';
 export interface PostCreatedEvent {
   authorId: string;
   postCreatedAt: Date;
+  recipientUserIds: string[];
 }

@@ -7,6 +7,7 @@ import {
 } from './schemas/post-reaction.schema';
 import { PostController } from './controllers/post.controller';
 import { PostService } from './services/post.service';
+import { PostAudienceService } from './services/post-audience.service';
 import { PostUnreadService } from './services/post-unread.service';
 import { PostRepository } from './repositories/post.repository';
 import { PostReactionRepository } from './repositories/post-reaction.repository';
@@ -36,6 +37,7 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
   controllers: [PostController],
   providers: [
     PostService,
+    PostAudienceService,
     PostUnreadService,
     PostsUnreadQueueService,
     PostsUnreadProcessor,

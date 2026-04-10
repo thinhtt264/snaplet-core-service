@@ -47,8 +47,10 @@ describe('PostService post reactions - removePostReaction', () => {
       postReactionRepository as any,
       {} as any, // mediaService
       relationshipService as any,
+      {} as any, // postAudienceService
       {} as any, // userService
       cacheService as any,
+      {} as any, // redisService
       {} as any, // postUnreadService
       {} as any, // postsUnreadQueueService
       eventEmitter,
