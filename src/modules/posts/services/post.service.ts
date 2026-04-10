@@ -18,6 +18,7 @@ import { PostVisibility } from '../schemas/post.schema';
 import { parseCursor, encodeCursor } from '../types/feed-cursor.types';
 import { PostRepository } from '../repositories/post.repository';
 import { PostReactionRepository } from '../repositories/post-reaction.repository';
+import { getCurrentReactionIcon } from '../utils/current-reaction-icon.util';
 import { MediaService } from '@modules/media/services/media.service';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { UserService } from '@modules/users/services/user.service';
@@ -32,10 +33,21 @@ import { PostUnreadService } from './post-unread.service';
 import { PostsUnreadQueueService } from '../queue/posts-unread.queue.service';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
 import { CacheService } from '@modules/cache/cache.service';
+import { RedisService } from '@common/redis/redis.service';
+import { buildRedisKey } from '@common/utils';
+import { throwPostCreateLimitExceeded } from '@common/utils';
 import {
   GetPostReactionsResponse,
   PostReactionResponse,
 } from '../interfaces/post-reaction-response.interface';
+import {
+  REACTION_CREATED_FOR_NOTIFICATION_EVENT,
+  type ReactionCreatedNotificationPayload,
+} from '@modules/notifications/events/notification.events';
+import {
+  POST_CREATE_DAILY_LIMIT,
+  POST_CREATE_LIMIT_TTL_SECONDS,
+} from '@common/constants';
 
 @Injectable()
 export class PostService {
@@ -50,6 +62,7 @@ export class PostService {
     private readonly relationshipService: RelationshipService,
     private readonly userService: UserService,
     private readonly cacheService: CacheService,
+    private readonly redisService: RedisService,
     private readonly postUnreadService: PostUnreadService,
     private readonly postsUnreadQueueService: PostsUnreadQueueService,
     private readonly eventEmitter: EventEmitter2,
@@ -59,6 +72,7 @@ export class PostService {
     userId: string,
     limit: number = 10,
     cursor?: string,
+    filterUserIds?: string[],
   ): Promise<GetPostsResponse> {
     try {
       const userObjectId = new Types.ObjectId(userId);
@@ -73,7 +87,31 @@ export class PostService {
 
       const userIds = [userObjectId, ...friendUserIds];
 
-      if (userIds.length === 0) {
+      // Optional filter: when requester passes `userIds`, only include posts
+      // from those authors that are within the allowed visibility scope:
+      // self or accepted friends.
+      let effectiveUserIds = userIds;
+      if (filterUserIds?.length) {
+        const uniqueFilterUserIds = Array.from(new Set(filterUserIds));
+        for (const uid of uniqueFilterUserIds) {
+          if (!Types.ObjectId.isValid(uid)) {
+            throw new BadRequestException('Invalid user id');
+          }
+        }
+
+        const allowedUserIdStrings = new Set(
+          userIds.map((id) => id.toString()),
+        );
+        const filterObjectIds = uniqueFilterUserIds.map(
+          (uid) => new Types.ObjectId(uid),
+        );
+
+        effectiveUserIds = filterObjectIds.filter((id) =>
+          allowedUserIdStrings.has(id.toString()),
+        );
+      }
+
+      if (effectiveUserIds.length === 0) {
         return {
           data: [],
           pagination: { limit, nextCursor: null },
@@ -82,7 +120,7 @@ export class PostService {
 
       const parsedCursor = parseCursor(cursor);
       const result = await this.postRepository.findPostsWithCursor({
-        userIds,
+        userIds: effectiveUserIds,
         limit,
         cursor: parsedCursor,
       });
@@ -98,9 +136,13 @@ export class PostService {
           nextCursor,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
       throw new InternalServerErrorException(
-        error.message || 'Failed to fetch posts feed',
+        error?.message || 'Failed to fetch posts feed',
       );
     }
   }
@@ -132,6 +174,44 @@ export class PostService {
     return this.transformPosts(posts, userId);
   }
 
+  async getPostById(userId: string, postId: string): Promise<PostResponse> {
+    try {
+      const post = await this.postRepository.findPostByIdWithUserInfo(
+        new Types.ObjectId(postId),
+      );
+      if (!post) {
+        throw new NotFoundException('Post not found');
+      }
+
+      const ownerUserId = post.userId.toString();
+      const isOwnPost = ownerUserId === userId;
+
+      if (!isOwnPost && post.visibility === PostVisibility.FRIEND_ONLY) {
+        const friendIds = await this.relationshipService.getMyFriendIds(userId);
+        if (!friendIds.includes(ownerUserId)) {
+          throw new ForbiddenException(
+            'You do not have permission to view this post',
+          );
+        }
+      }
+
+      const transformed = this.transformPosts([post], userId)[0];
+      if (!transformed) {
+        throw new NotFoundException('Post not found');
+      }
+
+      return transformed;
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to fetch post',
+      );
+    }
+  }
+
   async createPost(
     userId: string,
     mediaIds: string[],
@@ -139,25 +219,75 @@ export class PostService {
     visibility?: PostVisibility,
   ): Promise<{ id: string; createdAt: Date }> {
     await this.mediaService.assertMediaReadyAndOwned(mediaIds, userId);
+    const quotaRedisKey = await this.assertCanCreatePost(userId);
 
-    const post = await this.postRepository.create({
-      userId: new Types.ObjectId(userId),
-      mediaIds: mediaIds.map((id) => new Types.ObjectId(id)),
-      caption: caption ?? '',
-      visibility: visibility ?? PostVisibility.FRIEND_ONLY,
-    });
+    try {
+      const post = await this.postRepository.create({
+        userId: new Types.ObjectId(userId),
+        mediaIds: mediaIds.map((id) => new Types.ObjectId(id)),
+        caption: caption ?? '',
+        visibility: visibility ?? PostVisibility.FRIEND_ONLY,
+      });
 
-    setImmediate(() => {
-      this.eventEmitter.emit(POST_CREATED_EVENT, {
-        authorId: userId,
-        postCreatedAt: post.createdAt,
-      } as PostCreatedEvent);
-    });
+      setImmediate(() => {
+        this.eventEmitter.emit(POST_CREATED_EVENT, {
+          authorId: userId,
+          postCreatedAt: post.createdAt,
+        } as PostCreatedEvent);
+      });
 
-    return {
-      id: post._id.toString(),
-      createdAt: post.createdAt,
-    };
+      return {
+        id: post._id.toString(),
+        createdAt: post.createdAt,
+      };
+    } catch (error) {
+      if (quotaRedisKey) {
+        await this.releaseCreatePostQuota(quotaRedisKey);
+      }
+
+      throw error;
+    }
+  }
+
+  private async assertCanCreatePost(userId: string): Promise<string | null> {
+    // Soft dependency: when Redis is unavailable, do not block post creation.
+    if (!this.redisService.isRedisAvailable()) {
+      return null;
+    }
+
+    const redisKey = buildRedisKey(
+      REDIS_KEY_FEATURES.POST_CREATE_DAILY_LIMIT,
+      userId,
+    );
+    const currentCount = await this.redisService.incr(redisKey);
+
+    if (currentCount === 1) {
+      await this.redisService.expire(redisKey, POST_CREATE_LIMIT_TTL_SECONDS);
+    }
+
+    if (currentCount > POST_CREATE_DAILY_LIMIT) {
+      const ttl = await this.redisService.ttl(redisKey);
+      const hoursRemaining = ttl > 0 ? Math.ceil(ttl / 3600) : 24;
+      throwPostCreateLimitExceeded(
+        POST_CREATE_DAILY_LIMIT,
+        currentCount,
+        hoursRemaining,
+      );
+    }
+
+    return redisKey;
+  }
+
+  private async releaseCreatePostQuota(redisKey: string): Promise<void> {
+    // Best-effort rollback for failed create paths after quota reservation.
+    if (!this.redisService.isRedisAvailable()) {
+      return;
+    }
+
+    const nextCount = await this.redisService.decr(redisKey);
+    if (nextCount <= 0) {
+      await this.redisService.del(redisKey);
+    }
   }
 
   async unreadCount(userId: string): Promise<{ count: number }> {
@@ -223,6 +353,38 @@ export class PostService {
     );
   }
 
+  async ownerViewedPost(ownerUserId: string, postId: string): Promise<void> {
+    try {
+      const postIdObjectId = new Types.ObjectId(postId);
+      const ownerUserObjectId = new Types.ObjectId(ownerUserId);
+
+      await this.postRepository.updateOwnerViewedPostAtomic(
+        postIdObjectId,
+        ownerUserObjectId,
+        true,
+      );
+    } catch (error: any) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to clear owner viewed state',
+      );
+    }
+  }
+
+  private async markOwnerUnviewedPost(
+    postIdObjectId: Types.ObjectId,
+    ownerUserId: string,
+  ): Promise<void> {
+    await this.postRepository.updateOwnerViewedPostAtomic(
+      postIdObjectId,
+      new Types.ObjectId(ownerUserId),
+      false,
+    );
+  }
+
   async deletePost(userId: string, postId: string): Promise<void> {
     try {
       const postIdObjectId = new Types.ObjectId(postId);
@@ -239,6 +401,7 @@ export class PostService {
         REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
         postId,
       );
+      await this.cacheService.invalidateByTag(`post:${postId}`);
       await this.postRepository.hardDeletePost(postIdObjectId);
       void this.postsUnreadQueueService.enqueuePostDeleted(
         post.userId.toString(),
@@ -281,11 +444,36 @@ export class PostService {
         incomingReactionIcon: sanitizedReactionIcon,
       });
 
+      await this.markOwnerUnviewedPost(postIdObjectId, ownerUserId);
+
       // Invalidate cached actor list for this post so owner sees updates quickly.
       await this.cacheService.invalidate(
         REDIS_KEY_FEATURES.POST_REACTIONS_CACHE,
         postId,
       );
+
+      setImmediate(async () => {
+        try {
+          const [reactorDisplayName, actorAvatarUrl] = await Promise.all([
+            this.userService.getReactionNotificationLabel(userId),
+            this.userService.getReactionNotificationAvatarUrl(userId),
+          ]);
+          const notificationPayload: ReactionCreatedNotificationPayload = {
+            postId,
+            postOwnerId: ownerUserId,
+            reactorId: userId,
+            reactorDisplayName,
+            actorAvatarUrl,
+            reactionIcon: getCurrentReactionIcon(reaction.reactionIcon),
+          };
+          this.eventEmitter.emit(
+            REACTION_CREATED_FOR_NOTIFICATION_EVENT,
+            notificationPayload,
+          );
+        } catch {
+          // Preserve previous behavior: do not fail request due to async notification work.
+        }
+      });
 
       return {
         postId: reaction.postId.toString(),
@@ -372,6 +560,10 @@ export class PostService {
               reactedAt: new Date(item.reactedAt),
             }));
           },
+          resolveTags: (items) => [
+            `post:${postId}`,
+            ...items.map((i) => `user:${i.userId}`),
+          ],
         },
       );
     } catch (error: any) {
@@ -387,8 +579,16 @@ export class PostService {
   async getPostsActivity(userId: string): Promise<PostActivityResponse | null> {
     const keySuffix = userId;
 
+    type ActivityCached = Omit<PostActivityResponse, 'unreadCount'> & {
+      _cacheTagRefs: {
+        postId: string;
+        authorUserId: string;
+        mediaId: string;
+      };
+    };
+
     const [activityRow, { count }] = await Promise.all([
-      this.cacheService.getOrCompute(
+      this.cacheService.getOrCompute<ActivityCached | null>(
         REDIS_KEY_FEATURES.POST_ACTIVITY_CACHE,
         keySuffix,
         async () => {
@@ -401,7 +601,7 @@ export class PostService {
           const row = await this.postRepository.findLatestFriendActivities({
             friendIds: friendIds.map((id) => new Types.ObjectId(id)),
           });
-          if (!row) {
+          if (!row || !row.postId || !row.authorUserId || !row.mediaId) {
             return null;
           }
 
@@ -419,12 +619,32 @@ export class PostService {
           );
 
           return {
+            postId: row.postId.toString(),
             imageUrl: imageUrls.md || imageUrls.original || '',
             caption: row.caption?.trim() ? row.caption : null,
             senderAvatarUrl: avatarUrls.xs || null,
+            _cacheTagRefs: {
+              postId: row.postId.toString(),
+              authorUserId: row.authorUserId.toString(),
+              mediaId: row.mediaId.toString(),
+            },
           };
         },
         DEFAULT_CACHE_POST_TTL,
+        {
+          resolveTags: (v) => {
+            if (!v?._cacheTagRefs) {
+              return [];
+            }
+            const { postId, authorUserId, mediaId } = v._cacheTagRefs;
+            return [
+              `post:${postId}`,
+              `user:${authorUserId}`,
+              `media:${mediaId}`,
+              `activity:${userId}`,
+            ];
+          },
+        },
       ),
       this.unreadCount(userId),
     ]);
@@ -433,8 +653,11 @@ export class PostService {
       return null;
     }
 
+    const { _cacheTagRefs, ...activityRest } = activityRow;
+    void _cacheTagRefs;
+
     return {
-      ...activityRow,
+      ...activityRest,
       unreadCount: count,
     };
   }
@@ -478,6 +701,7 @@ export class PostService {
         visibility: post.visibility,
         createdAt: post.createdAt,
         isOwnPost: post.userId.toString() === userId,
+        isOwnerViewedPost: post.isOwnerViewedPost ?? false,
       };
     });
   }

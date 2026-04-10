@@ -30,6 +30,28 @@ export class PostRepository implements IPostRepository {
     return this.postModel.findById(postId).exec();
   }
 
+  async updateOwnerViewedPostAtomic(
+    postId: Types.ObjectId,
+    ownerUserId: Types.ObjectId,
+    nextValue: boolean,
+  ): Promise<boolean> {
+    const result = await this.postModel
+      .updateOne(
+        {
+          _id: postId,
+          userId: ownerUserId,
+          isDeleted: { $ne: true },
+          isOwnerViewedPost: !nextValue,
+        },
+        {
+          $set: { isOwnerViewedPost: nextValue },
+        },
+      )
+      .exec();
+
+    return (result.modifiedCount ?? 0) > 0;
+  }
+
   async countPostsByFriendCreatedAfter(
     friendUserIds: Types.ObjectId[],
     createdAtAfter: Date,
@@ -225,6 +247,9 @@ export class PostRepository implements IPostRepository {
             caption: 1,
             avatarKey: '$user.avatarKey',
             mediaKey: { $arrayElemAt: ['$media.mediaKey', 0] },
+            postId: '$_id',
+            authorUserId: '$userId',
+            mediaId: { $arrayElemAt: ['$mediaIds', 0] },
           },
         },
       ])
@@ -340,6 +365,7 @@ export class PostRepository implements IPostRepository {
           userId: 1, // Keep for isOwnPost check
           caption: 1,
           visibility: 1,
+          isOwnerViewedPost: 1,
           createdAt: 1,
           user: 1,
           media: 1,
@@ -352,7 +378,9 @@ export class PostRepository implements IPostRepository {
    * Find single post by ID with user info and media
    * Uses same pipeline structure as findPostsWithCursor for consistency
    */
-  async findPostByIdWithUserInfo(postId: Types.ObjectId): Promise<any | null> {
+  async findPostByIdWithUserInfo(
+    postId: Types.ObjectId,
+  ): Promise<RawPostFromAggregation | null> {
     const pipeline = [
       {
         $match: {
@@ -395,6 +423,7 @@ export class PostRepository implements IPostRepository {
             {
               $project: {
                 _id: 1,
+                ownerId: 1,
                 mimeType: 1,
                 mediaKey: 1,
                 duration: 1,
@@ -414,6 +443,7 @@ export class PostRepository implements IPostRepository {
           userId: 1,
           caption: 1,
           visibility: 1,
+          isOwnerViewedPost: 1,
           createdAt: 1,
           user: 1,
           media: 1,
@@ -421,7 +451,9 @@ export class PostRepository implements IPostRepository {
       },
     ];
 
-    const results = await this.postModel.aggregate(pipeline as any[]).exec();
+    const results = await this.postModel
+      .aggregate<RawPostFromAggregation>(pipeline as any[])
+      .exec();
     return results.length > 0 ? results[0] : null;
   }
 }

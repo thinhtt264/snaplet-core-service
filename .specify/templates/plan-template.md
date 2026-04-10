@@ -31,7 +31,21 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Confirm alignment with `.specify/memory/constitution.md` (summarized):
+
+- **Module boundaries**: Work lives in `src/modules/*` with stable cross-module
+  interfaces; no bypassing ownership.
+- **Contracts**: HTTP, events, and DTOs are validation-backed (e.g.,
+  class-validator); breaking changes are documented and migration-safe.
+- **Verification**: Automated tests where practical plus manual steps for
+  integration-heavy flows; relevant commands pass before merge.
+- **Security**: Auth and authorization preserved or improved; no secrets in
+  repo; untrusted input validated.
+- **Operability**: Observable failures, traceable errors; async and integration
+  paths have timeouts, retries, or documented handling.
+
+If any gate cannot be met, record the justification under **Complexity Tracking**
+below.
 
 ## Project Structure
 

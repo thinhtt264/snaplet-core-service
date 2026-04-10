@@ -12,6 +12,7 @@ export enum OrderDirection {
 
 export enum ErrorCode {
   RELATIONSHIP_LIMIT_EXCEEDED = 'RELATIONSHIP_LIMIT_EXCEEDED',
+  POST_CREATE_LIMIT_EXCEEDED = 'POST_CREATE_LIMIT_EXCEEDED',
   INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
   INVALID_FINGERPRINT = 'INVALID_FINGERPRINT',
 }
@@ -22,8 +23,9 @@ export enum RelationshipLimitReason {
 }
 
 export const MAX_RELATIONSHIPS_PER_USER = 30;
-export const DEFAULT_PAGE_SIZE = 10;
-export const MAX_PAGE_SIZE = 100;
+export const POST_CREATE_DAILY_LIMIT = 10;
+export const POST_CREATE_LIMIT_TTL_SECONDS = 24 * 60 * 60; // 24h
 
 export * from './redis-keys.constants';
 export * from './regex.constants';
+export * from './user-profile.constants';

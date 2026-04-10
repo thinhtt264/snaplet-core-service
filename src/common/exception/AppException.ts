@@ -1,9 +1,6 @@
 import { ErrorCode } from '@common/constants';
 import { HttpException, HttpStatus } from '@nestjs/common';
 
-/**
- * Interface định nghĩa cấu trúc error response từ AppException
- */
 export interface AppExceptionResponse {
   error: {
     code: ErrorCode;
@@ -12,10 +9,6 @@ export interface AppExceptionResponse {
   };
 }
 
-/**
- * Custom exception class với cấu trúc rõ ràng cho error handling
- * Hỗ trợ errorCode, message và meta data để dễ dàng mở rộng
- */
 export class AppException extends HttpException {
   private readonly errorCode: ErrorCode;
   private readonly errorMessage: string;
@@ -42,30 +35,18 @@ export class AppException extends HttpException {
     this.errorMeta = meta;
   }
 
-  /**
-   * Lấy error code
-   */
   getErrorCode(): ErrorCode {
     return this.errorCode;
   }
 
-  /**
-   * Lấy error message
-   */
   getErrorMessage(): string {
     return this.errorMessage;
   }
 
-  /**
-   * Lấy meta data (nếu có)
-   */
   getErrorMeta(): any {
     return this.errorMeta;
   }
 
-  /**
-   * Kiểm tra xem exception có phải AppException không
-   */
   static isAppException(exception: unknown): exception is AppException {
     return exception instanceof AppException;
   }

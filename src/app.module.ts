@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import configuration from '@config/configuration';
+import { validationSchema } from '@config/validation.schema';
 import { DatabaseModule } from '@database/database.module';
 import { CommonJwtModule } from '@common/jwt/jwt.module';
 import { RedisModule } from '@common/redis/redis.module';
@@ -15,6 +16,7 @@ import { PostsModule } from '@modules/posts/posts.module';
 import { RelationshipsModule } from '@modules/relationships/relationships.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { SocketModule } from '@modules/socket/socket.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TransformInterceptor } from '@common/interceptors/transform.interceptor';
@@ -29,6 +31,7 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
       isGlobal: true,
       load: [configuration],
       envFilePath: '.env',
+      validationSchema,
     }),
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
@@ -55,6 +58,7 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
     PostsModule,
     RelationshipsModule,
     SocketModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

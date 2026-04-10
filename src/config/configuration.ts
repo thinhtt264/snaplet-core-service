@@ -96,4 +96,31 @@ export default () => ({
       10,
     ), // default: 15 minutes (900 seconds)
   },
+
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID || '',
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
+    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n') || '',
+  },
+
+  /**
+   * BullMQ Worker (notification push): same tuning idea as posts-unread.
+   */
+  notifications: {
+    worker: {
+      drainDelaySeconds: parseInt(
+        process.env.NOTIFICATIONS_WORKER_DRAIN_DELAY_SECONDS || String(5 * 60),
+        10,
+      ),
+      lockDurationMs: parseInt(
+        process.env.NOTIFICATIONS_WORKER_LOCK_DURATION_MS || String(20 * 1000),
+        10,
+      ),
+      stalledIntervalMs: parseInt(
+        process.env.NOTIFICATIONS_WORKER_STALLED_INTERVAL_MS ||
+          String(10 * 1000),
+        10,
+      ),
+    },
+  },
 });

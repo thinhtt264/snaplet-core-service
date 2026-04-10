@@ -9,12 +9,14 @@ import {
   IUserProfileResponse,
 } from '../interfaces/user-response.interface';
 import { UserRepository } from '../repositories/user.repository';
+import { CacheService } from '@modules/cache/cache.service';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { AVATAR_V1_FOLDER, MAX_AVATAR_FILE_SIZE } from '@common/constants';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import { ImageSizeKey, ImageSizesResponse } from '@common/types';
 import { SearchUserItemResponse } from '../interfaces/user-search-response.interface';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 
 const AVATAR_SIZE_KEYS: ImageSizeKey[] = [
   ImageSizeKey.XS,
@@ -27,6 +29,7 @@ export class UserService {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly storageService: StorageService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async checkUserExists(userId: string): Promise<boolean> {
@@ -124,6 +127,8 @@ export class UserService {
       throw new NotFoundException('Unable to update avatar');
     }
 
+    await this.cacheService.invalidateByTag(`user:${userId}`);
+
     const oldKey = currentUser.avatarKey;
     if (
       oldKey &&
@@ -147,13 +152,29 @@ export class UserService {
 
     const currentKey = user.avatarKey;
 
-    setImmediate(() => {
-      this.userRepository.updateAvatarKey(userId, '').catch(() => undefined);
-      if (
-        currentKey &&
-        currentKey.startsWith(`${AVATAR_V1_FOLDER}/${userId}-`)
-      ) {
-        this.storageService.deleteFile(currentKey).catch(() => undefined);
+    setImmediate(async () => {
+      try {
+        // Ensure cache invalidation happens AFTER the DB write.
+        // Otherwise a concurrent request can read the old DB value and
+        // repopulate the cache with stale data.
+        const updatedUser = await this.userRepository.updateAvatarKey(
+          userId,
+          '',
+        );
+
+        if (!updatedUser) return;
+
+        await this.cacheService.invalidateByTag(`user:${userId}`);
+
+        // Storage cleanup should not block avatar deletion correctness.
+        if (
+          currentKey &&
+          currentKey.startsWith(`${AVATAR_V1_FOLDER}/${userId}-`)
+        ) {
+          this.storageService.deleteFile(currentKey).catch(() => undefined);
+        }
+      } catch {
+        // Preserve previous behavior: do not fail request due to async cleanup.
       }
     });
 
@@ -218,7 +239,65 @@ export class UserService {
       throw new NotFoundException('Unable to update display name');
     }
 
+    await this.cacheService.invalidateByTag(`user:${userId}`);
+
     return this.buildUserProfileResponse(updatedUser);
+  }
+
+  async updateFcmToken(userId: string, fcmToken: string): Promise<void> {
+    await this.userRepository.updateFcmToken(userId, fcmToken);
+  }
+
+  /**
+   * Clears push registration and user-scoped cache entries used while logged in
+   * (unread/session/post-activity tags). Intended for logout.
+   */
+  async clearSessionResourcesForLogout(userId: string): Promise<void> {
+    await this.userRepository.updateFcmToken(userId, null);
+    await this.cacheService.invalidateByTags([
+      `user:${userId}`,
+      `activity:${userId}`,
+    ]);
+    await Promise.all([
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
+        userId,
+      ),
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_UNREAD_LAST_SEEN_CACHE,
+        userId,
+      ),
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_ACTIVITY_CACHE,
+        userId,
+      ),
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.POST_SESSION_STATE,
+        userId,
+      ),
+    ]);
+  }
+
+  /** Display name for reaction push notifications (first name only). */
+  async getReactionNotificationLabel(userId: string): Promise<string> {
+    const label =
+      await this.userRepository.findReactionNotificationLabel(userId);
+    return label?.trim() || 'Someone';
+  }
+
+  /** Reactor avatar (XS) for reaction push payload on mobile clients. */
+  async getReactionNotificationAvatarUrl(
+    userId: string,
+  ): Promise<string | null> {
+    const user = await this.userRepository.findActiveById(userId);
+    if (!user) {
+      return null;
+    }
+
+    const avatarUrls = this.getAvatarUrlsForKey(user.avatarKey, {
+      sizes: [ImageSizeKey.XS],
+    });
+    return avatarUrls.xs || null;
   }
 
   async searchUsers(

@@ -27,8 +27,8 @@ import {
 } from '../interfaces/post-reaction-response.interface';
 import { GetNewerFeedDto } from '../dto/get-newer-feed.dto';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { CurrentUserId } from 'src/common/decorators/current-user.decorator';
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { CurrentUserId } from '@common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { ReactToPostDto } from '../dto/react-to-post.dto';
 
 @Controller('posts')
@@ -49,6 +49,15 @@ export class PostController {
     return this.postService.markSeen(userId, dto.lastSeenPostCreatedAt);
   }
 
+  @Patch(':postId/owner-viewed')
+  @HttpCode(HttpStatus.OK)
+  async markOwnerViewedPost(
+    @CurrentUserId() userId: string,
+    @Param() params: PostIdParamDto,
+  ): Promise<void> {
+    return this.postService.ownerViewedPost(userId, params.postId);
+  }
+
   @Get('feed/newer')
   @HttpCode(HttpStatus.OK)
   async getNewerFeed(
@@ -63,10 +72,18 @@ export class PostController {
     @CurrentUserId() userId: string,
     @Query() query: GetPostsQueryDto,
   ): Promise<GetPostsResponse> {
+    let filterUserIds: string[] | undefined;
+    if (query.userIds?.length) {
+      filterUserIds = query.userIds;
+    } else if (query.userId) {
+      filterUserIds = [query.userId];
+    }
+
     return await this.postService.getPostsFeed(
       userId,
       query.limit || 10,
       query.cursor,
+      filterUserIds,
     );
   }
 
@@ -76,6 +93,15 @@ export class PostController {
     @CurrentUserId() userId: string,
   ): Promise<PostActivityResponse | null> {
     return this.postService.getPostsActivity(userId);
+  }
+
+  @Get(':postId')
+  @HttpCode(HttpStatus.OK)
+  async getPostById(
+    @CurrentUserId() userId: string,
+    @Param() params: PostIdParamDto,
+  ): Promise<PostResponse> {
+    return this.postService.getPostById(userId, params.postId);
   }
 
   @Post()
@@ -106,7 +132,7 @@ export class PostController {
   @UseGuards(ThrottlerGuard)
   @Throttle({
     default: {
-      limit: 10,
+      limit: 15,
       ttl: 30_000,
     },
   })

@@ -132,6 +132,17 @@ export class RedisService implements OnModuleDestroy {
     );
   }
 
+  /** Add member(s) to a Redis set. */
+  async sadd(key: string, ...members: string[]): Promise<number> {
+    if (members.length === 0) return 0;
+    return this.safeExecute(() => this.redis.sadd(key, ...members), 0, 'sadd');
+  }
+
+  /** Return all members of a Redis set. */
+  async smembers(key: string): Promise<string[]> {
+    return this.safeExecute(() => this.redis.smembers(key), [], 'smembers');
+  }
+
   /**
    * Scan and return keys matching a pattern.
    */

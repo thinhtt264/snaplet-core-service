@@ -44,8 +44,8 @@ This repository is a **NestJS + TypeScript backend** using **MongoDB (Mongoose)*
 - `src/common/*`
   - `types/*`: generic types for API responses, pagination, images, MIME types, fingerprints, and request metadata.
   - `utils/*`: helpers for dates, Redis keys/operations, fingerprints, and common logic.
-  - `constants/*`: regex patterns, Redis key templates, and other shared constants.
-  - `validators/*`: custom `class-validator` decorators (email, username, image MIME, etc.).
+  - `constants/*`: regex patterns, Redis key templates (`redis-keys.constants.ts` includes feature keys such as post unread/session activity and **post reactions actor-list cache**), `user-profile.constants.ts` (**max length** for username, first name, last name across API + persistence), and other shared constants.
+  - `validators/*`: custom `class-validator` decorators (email, username — **no spaces**, letters/numbers/underscores only — image MIME, etc.).
   - `decorators/*`: `@CurrentUser`, header helpers, API response decorators.
   - `guards/*`: JWT auth, device fingerprint, and device-daily-limit guards.
   - `interceptors/*`: centralized logging and response transformation.
@@ -74,7 +74,7 @@ Real-time note: WebSockets use `src/modules/socket/*` (gateway/service/events), 
   - `auth.controller.ts`: register/login/refresh token + username/email checks.
   - `auth.service.ts`: auth logic, token generation, device/session rules.
   - `repositories/refresh-token.repository.ts`: persistence for refresh tokens.
-  - `dto/*`: request DTOs for auth flows.
+  - `dto/*`: request DTOs for auth flows; **register** and **check-username** enforce **max length** on username (and first/last name on register) via shared `USER_PROFILE_FIELD_MAX_LENGTH`.
   - `interfaces/*`: response contracts.
 
 - `src/modules/users`
@@ -96,16 +96,19 @@ Real-time note: WebSockets use `src/modules/socket/*` (gateway/service/events), 
   - Uses `StorageModule` and R2 storage (`infrastructure/storage/r2/*`).
 
 - `src/modules/posts`
-  - `posts.module.ts`: providers include `PostService`, unread services, and unread queue (service + processor).
-  - `controllers/post.controller.ts`: create post and fetch feed endpoints.
-  - `services/post.service.ts`: main posts business logic, integrates with `PostRepository`, `MediaService`, `RelationshipService`.
+  - `posts.module.ts`: providers include `PostService`, unread services, unread queue (service + processor), **`PostReactionRepository`**, and listeners (**`UserConnectedListener`**, **`PostEventListener`**, **`RelationshipEventListener`**).
+  - `controllers/post.controller.ts`: create post, fetch feed, delete post (**`PostIdParamDto`**), and **post reactions**: **`PATCH :postId/reactions`** (throttled), **`DELETE :postId/reactions`**, **`GET :postId/reactions`** (owner-only actor list; no aggregate counts in contract).
+  - `services/post.service.ts`: main posts business logic, integrates with `PostRepository`, `MediaService`, `RelationshipService`, and **reaction** flows via `PostReactionRepository` + **`CacheService`** (Redis key feature **`POST_REACTIONS_CACHE`**; invalidation on mutations and on relationship teardown).
   - `repositories/post.repository.ts`:
     - Mongo aggregation for feed, joining users and media.
     - **Cursor-based pagination uses a compound cursor on `createdAt` + `_id`**, encoded/decoded in `types/feed-cursor.types.ts`.
+  - `repositories/post-reaction.repository.ts`: upsert/remove reactions, owner actor aggregation with `$lookup` to `users`, delete reactions by post or **between two users** (used when a friendship ends).
   - `schemas/post.schema.ts`: post structure and indexes, including compound indexes on `{ userId, createdAt, _id }` to support feed queries.
-  - `dto/*`, `interfaces/*`: create/get posts DTOs and typed responses.
+  - `schemas/post-reaction.schema.ts`: **`post_reactions`** collection; unique index on `(postId, reactorUserId)`; reaction icon stored with trim/maxlength at schema level.
+  - `constants/*`: e.g. **`DEFAULT_CACHE_POST_TTL`** for shared post-related cache TTLs, **`post-reaction.constants`** for reaction history limits in storage pipeline.
+  - `dto/*`, `interfaces/*`: create/get posts DTOs, **`react-to-post.dto`**, post/reaction typed responses.
   - `queue/*`: background processing for unread state updates (mark-seen, delete effects).
-  - `listeners/*` / `events/*`: hooks domain events into unread/session logic via EventEmitter.
+  - `listeners/*` / `events/*`: unread/session logic via EventEmitter; **`RelationshipEventListener`** reacts to **`RELATIONSHIP_DELETED_EVENT`** by removing cross-user reactions and invalidating reaction caches for impacted posts.
 
 - `src/modules/relationships`
   - `relationships.module.ts`

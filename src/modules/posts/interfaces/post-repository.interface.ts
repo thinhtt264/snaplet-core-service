@@ -44,12 +44,16 @@ export interface RawPostFromAggregation {
   createdAt: Date;
   user: RawUserFromAggregation;
   media: RawMediaFromAggregation[];
+  isOwnerViewedPost: boolean;
 }
 
 export interface RawPostActivityFromAggregation {
   caption: string;
   mediaKey?: string;
   avatarKey?: string;
+  postId?: Types.ObjectId;
+  authorUserId?: Types.ObjectId;
+  mediaId?: Types.ObjectId;
 }
 
 export interface FindPostsWithCursorParams {
@@ -74,7 +78,14 @@ export interface IPostRepository {
   findPostsWithCursor(
     params: FindPostsWithCursorParams,
   ): Promise<FindPostsWithCursorResult>;
-  findPostByIdWithUserInfo(postId: Types.ObjectId): Promise<any | null>;
+  findPostByIdWithUserInfo(
+    postId: Types.ObjectId,
+  ): Promise<RawPostFromAggregation | null>;
+  updateOwnerViewedPostAtomic(
+    postId: Types.ObjectId,
+    ownerUserId: Types.ObjectId,
+    nextValue: boolean,
+  ): Promise<boolean>;
   findLatestFriendActivities(params: {
     friendIds: Types.ObjectId[];
   }): Promise<RawPostActivityFromAggregation | null>;

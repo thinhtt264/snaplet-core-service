@@ -1,3 +1,4 @@
+import { USER_PROFILE_FIELD_MAX_LENGTH } from '@common/constants';
 import { AbstractDocument } from '@database/abstract.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
@@ -21,13 +22,22 @@ export class User extends AbstractDocument {
     index: true,
     lowercase: true,
     trim: true,
+    maxlength: USER_PROFILE_FIELD_MAX_LENGTH,
   })
   username: string;
 
-  @Prop({ required: true, trim: true })
+  @Prop({
+    required: true,
+    trim: true,
+    maxlength: USER_PROFILE_FIELD_MAX_LENGTH,
+  })
   firstName: string;
 
-  @Prop({ required: true, trim: true })
+  @Prop({
+    required: true,
+    trim: true,
+    maxlength: USER_PROFILE_FIELD_MAX_LENGTH,
+  })
   lastName: string;
 
   @Prop({ default: '' })
@@ -35,6 +45,10 @@ export class User extends AbstractDocument {
 
   @Prop({ default: '' })
   deviceToken: string;
+
+  /** Single-device FCM registration token; new login overwrites previous. */
+  @Prop({ type: String, default: null })
+  fcmToken: string | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
