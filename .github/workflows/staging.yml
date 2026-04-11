@@ -59,10 +59,11 @@ jobs:
         shell: bash
         run: |
           umask 077
-          printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/config.env"
-          test -s "${GITHUB_WORKSPACE}/config.env"
+          printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/infra/ec2/config.env"
+          test -s "${GITHUB_WORKSPACE}/infra/ec2/config.env"
+
           printf '%s' "${{ secrets.ENV }}" > "${GITHUB_WORKSPACE}/.env"
-          test -s "${GITHUB_WORKSPACE}/.env"
+          test -s "${GITHUB_WORKSPACE}/infra/ec2/.env"
 
       - name: Run infra update
         shell: bash
@@ -95,10 +96,10 @@ jobs:
         shell: bash
         run: |
           umask 077
-          printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/config.env"
-          test -s "${GITHUB_WORKSPACE}/config.env"
-          printf '%s' "${{ secrets.ENV }}" > "${GITHUB_WORKSPACE}/.env"
-          test -s "${GITHUB_WORKSPACE}/.env"
+          printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/infra/ec2/config.env"
+          test -s "${GITHUB_WORKSPACE}/infra/ec2/config.env"
+          printf '%s' "${{ secrets.ENV }}" > "${GITHUB_WORKSPACE}/infra/ec2/.env"
+          test -s "${GITHUB_WORKSPACE}/infra/ec2/.env"
 
       - name: Run infra update
         shell: bash
