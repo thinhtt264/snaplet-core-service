@@ -1,11 +1,11 @@
 # ======================
 # Builder stage
 # ======================
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Enable pnpm via corepack (node 20 có sẵn)
+# Enable pnpm via corepack (node 24 có sẵn)
 RUN corepack enable
 
 # Copy lockfile trước để tận dụng cache
@@ -25,7 +25,7 @@ RUN pnpm build
 # ======================
 # Production stage
 # ======================
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 WORKDIR /app
 
