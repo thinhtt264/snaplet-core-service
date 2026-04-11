@@ -59,6 +59,11 @@ jobs:
         shell: bash
         run: |
           umask 077
+          mkdir -p "${GITHUB_WORKSPACE}/infra/ec2/secrets"
+
+          printf '%s' "${{ secrets.SERVICE_KEY_PEM }}" > "${GITHUB_WORKSPACE}/infra/ec2/secrets/snaplet-core-service-key.pem"
+          test -s "${GITHUB_WORKSPACE}/infra/ec2/secrets/snaplet-core-service-key.pem"
+
           printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/infra/ec2/config.env"
           test -s "${GITHUB_WORKSPACE}/infra/ec2/config.env"
 
@@ -96,8 +101,13 @@ jobs:
         shell: bash
         run: |
           umask 077
+          mkdir -p "${GITHUB_WORKSPACE}/infra/ec2/secrets"
+          printf '%s' "${{ secrets.SERVICE_KEY_PEM }}" > "${GITHUB_WORKSPACE}/infra/ec2/secrets/snaplet-core-service-key.pem"
+          test -s "${GITHUB_WORKSPACE}/infra/ec2/secrets/snaplet-core-service-key.pem"
+
           printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/infra/ec2/config.env"
           test -s "${GITHUB_WORKSPACE}/infra/ec2/config.env"
+          
           printf '%s' "${{ secrets.ENV }}" > "${GITHUB_WORKSPACE}/infra/ec2/.env"
           test -s "${GITHUB_WORKSPACE}/infra/ec2/.env"
 
