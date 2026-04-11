@@ -62,7 +62,7 @@ jobs:
           printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/infra/ec2/config.env"
           test -s "${GITHUB_WORKSPACE}/infra/ec2/config.env"
 
-          printf '%s' "${{ secrets.ENV }}" > "${GITHUB_WORKSPACE}/.env"
+          printf '%s' "${{ secrets.ENV }}" > "${GITHUB_WORKSPACE}/infra/ec2/.env"
           test -s "${GITHUB_WORKSPACE}/infra/ec2/.env"
 
       - name: Run infra update
