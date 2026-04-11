@@ -59,11 +59,10 @@ jobs:
         shell: bash
         run: |
           umask 077
-          printf '%s' "${{ secrets.CONFIG_ENV_B64 }}" | base64 -d > "${GITHUB_WORKSPACE}/config.env"
+          printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/config.env"
           test -s "${GITHUB_WORKSPACE}/config.env"
-          # nếu cần thêm .env:
-          # printf '%s' "${{ secrets.DOTENV_B64 }}" | base64 -d > "${GITHUB_WORKSPACE}/.env"
-          # test -s "${GITHUB_WORKSPACE}/.env"
+          printf '%s' "${{ secrets.ENV }}" > "${GITHUB_WORKSPACE}/.env"
+          test -s "${GITHUB_WORKSPACE}/.env"
 
       - name: Run infra update
         shell: bash
@@ -96,8 +95,10 @@ jobs:
         shell: bash
         run: |
           umask 077
-          printf '%s' "${{ secrets.CONFIG_ENV_B64 }}" | base64 -d > "${GITHUB_WORKSPACE}/config.env"
+          printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/config.env"
           test -s "${GITHUB_WORKSPACE}/config.env"
+          printf '%s' "${{ secrets.ENV }}" > "${GITHUB_WORKSPACE}/.env"
+          test -s "${GITHUB_WORKSPACE}/.env"
 
       - name: Run infra update
         shell: bash
