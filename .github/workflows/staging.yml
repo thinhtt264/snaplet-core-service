@@ -63,6 +63,13 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      - name: Load environment variables from secret
+        shell: bash
+        run: |
+          umask 077
+          printf '%s' "${{ secrets.CONFIG_ENV }}" > "${GITHUB_WORKSPACE}/config.env"
+          test -s "${GITHUB_WORKSPACE}/config.env"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
