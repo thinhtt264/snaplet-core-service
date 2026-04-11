@@ -203,12 +203,14 @@ export class PostRepository implements IPostRepository {
     });
 
     const seen = new Set<string>();
-    return merged.filter((p) => {
-      const key = p._id.toString();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return merged
+      .filter((p) => {
+        const key = p._id.toString();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, limit + 1);
   }
 
   async create(post: Partial<Post>): Promise<Post> {

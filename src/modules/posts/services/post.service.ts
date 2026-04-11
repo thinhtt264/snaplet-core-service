@@ -243,11 +243,6 @@ export class PostService {
         }
 
         const unique = Array.from(new Set(incoming));
-        for (const uid of unique) {
-          if (!Types.ObjectId.isValid(uid)) {
-            throw new BadRequestException('Invalid user id');
-          }
-        }
 
         // Refactor note: selected-users is treated as a "friends-only allowlist".
         // This keeps feed queries efficient without requiring a multikey index on allowedViewerUserIds.

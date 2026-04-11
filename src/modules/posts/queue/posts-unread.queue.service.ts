@@ -40,14 +40,20 @@ export class PostsUnreadQueueService implements OnModuleDestroy {
     authorId: string,
     recipientUserIds: string[],
   ): Promise<void> {
-    await this.enqueue(POSTS_UNREAD_JOB_CREATED, { authorId, recipientUserIds });
+    await this.enqueue(POSTS_UNREAD_JOB_CREATED, {
+      authorId,
+      recipientUserIds,
+    });
   }
 
   async enqueuePostDeleted(
     authorId: string,
     recipientUserIds: string[],
   ): Promise<void> {
-    await this.enqueue(POSTS_UNREAD_JOB_DELETED, { authorId, recipientUserIds });
+    await this.enqueue(POSTS_UNREAD_JOB_DELETED, {
+      authorId,
+      recipientUserIds,
+    });
   }
 
   async enqueueMarkSeen(
