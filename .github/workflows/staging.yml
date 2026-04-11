@@ -66,8 +66,8 @@ jobs:
 
       - name: Run infra update
         shell: bash
-        run: bash infra/ec2/scripts/deploy.sh
-
+        run: bash infra/ec2/scripts/update-service.sh
+  
   deploy-prod:
     name: Deploy Master
     runs-on: ubuntu-latest
@@ -102,4 +102,4 @@ jobs:
 
       - name: Run infra update
         shell: bash
-        run: bash infra/ec2/scripts/deploy.sh
+        run: bash infra/ec2/scripts/update-service.sh
