@@ -15,7 +15,7 @@ export class PostEventListener {
   @OnEvent(POST_CREATED_EVENT)
   async handle(payload: PostCreatedEvent): Promise<void> {
     await this.postsUnreadQueueService
-      .enqueuePostCreated(payload.authorId)
+      .enqueuePostCreated(payload.authorId, payload.recipientUserIds)
       .catch((error) => {
         this.logger.warn(`enqueuePostCreated failed: ${error.message}`);
       });

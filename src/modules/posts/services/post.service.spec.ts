@@ -20,6 +20,7 @@ describe('PostService post reactions - reactToPost', () => {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
       }),
+      updateOwnerViewedPostAtomic: jest.fn().mockResolvedValue(true),
     };
 
     const postReactionRepository = {
@@ -51,7 +52,9 @@ describe('PostService post reactions - reactToPost', () => {
       {} as any,
       relationshipService as any,
       {} as any,
+      {} as any,
       cacheService as any,
+      {} as any,
       {} as any,
       {} as any,
       eventEmitter,
@@ -85,6 +88,7 @@ describe('PostService post reactions - reactToPost', () => {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
       }),
+      updateOwnerViewedPostAtomic: jest.fn().mockResolvedValue(true),
     };
 
     const postReactionRepository = {
@@ -109,7 +113,9 @@ describe('PostService post reactions - reactToPost', () => {
       {} as any,
       relationshipService as any,
       {} as any,
+      {} as any,
       cacheService as any,
+      {} as any,
       {} as any,
       {} as any,
       eventEmitter,
@@ -132,6 +138,7 @@ describe('PostService post reactions - reactToPost', () => {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
       }),
+      updateOwnerViewedPostAtomic: jest.fn().mockResolvedValue(true),
     };
 
     const postReactionRepository = {
@@ -162,7 +169,9 @@ describe('PostService post reactions - reactToPost', () => {
       {} as any,
       relationshipService as any,
       {} as any,
+      {} as any,
       cacheService as any,
+      {} as any,
       {} as any,
       {} as any,
       eventEmitter,
@@ -188,6 +197,7 @@ describe('PostService post reactions - reactToPost', () => {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
       }),
+      updateOwnerViewedPostAtomic: jest.fn().mockResolvedValue(true),
     };
 
     const postReactionRepository = {
@@ -218,7 +228,9 @@ describe('PostService post reactions - reactToPost', () => {
       {} as any,
       relationshipService as any,
       {} as any,
+      {} as any,
       cacheService as any,
+      {} as any,
       {} as any,
       {} as any,
       eventEmitter,
@@ -261,6 +273,11 @@ describe('PostService - deletePost', () => {
     const postsUnreadQueueService = {
       enqueuePostDeleted: jest.fn().mockResolvedValue(undefined),
     };
+    const postAudienceService = {
+      resolveRecipientUserIds: jest
+        .fn()
+        .mockResolvedValue(['507f1f77bcf86cd799439014']),
+    };
 
     const eventEmitter = {
       emit: jest.fn(),
@@ -271,8 +288,10 @@ describe('PostService - deletePost', () => {
       postReactionRepository as any,
       {} as any,
       {} as any,
+      postAudienceService as any,
       {} as any,
       cacheService as any,
+      {} as any,
       {} as any,
       postsUnreadQueueService as any,
       eventEmitter,
@@ -292,6 +311,7 @@ describe('PostService - deletePost', () => {
     expect(cacheService.invalidateByTag).toHaveBeenCalledWith(`post:${postId}`);
     expect(postsUnreadQueueService.enqueuePostDeleted).toHaveBeenCalledWith(
       postOwnerUserId,
+      ['507f1f77bcf86cd799439014'],
     );
   });
 });

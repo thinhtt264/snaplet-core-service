@@ -8,7 +8,6 @@ import { ConfigService } from '@nestjs/config';
 import { Worker, type Job } from 'bullmq';
 import { RedisService } from '@common/redis/redis.service';
 import { SocketService } from '@modules/socket/socket.service';
-import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { PostUnreadService } from '../services/post-unread.service';
 import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
@@ -36,7 +35,6 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
-    private readonly relationshipService: RelationshipService,
     private readonly postUnreadService: PostUnreadService,
     private readonly socketService: SocketService,
     private readonly cacheService: CacheService,
@@ -99,9 +97,7 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleCreated(data: PostUnreadCreatedJobData): Promise<void> {
-    const friendIds = await this.relationshipService.getMyFriendIds(
-      data.authorId,
-    );
+    const friendIds = data.recipientUserIds;
 
     if (friendIds.length <= 0) {
       return;
@@ -129,11 +125,11 @@ export class PostsUnreadProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleDeleted(data: PostUnreadDeletedJobData): Promise<void> {
-    await this.postUnreadService.applyPostDeleteSideEffects(data.authorId);
-
-    const friendIds = await this.relationshipService.getMyFriendIds(
-      data.authorId,
+    await this.postUnreadService.applyPostDeleteSideEffects(
+      data.recipientUserIds,
     );
+
+    const friendIds = data.recipientUserIds;
     if (friendIds.length > 0) {
       await Promise.all(
         friendIds.map((friendId) =>

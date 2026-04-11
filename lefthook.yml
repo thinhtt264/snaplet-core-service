@@ -1,0 +1,15 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: lint
+      glob: "*.{ts,js}"
+      run: pnpm exec eslint --fix {staged_files}
+      stage_fixed: true
+
+    - name: test (staged)
+      run: pnpm exec jest --bail --findRelatedTests {staged_files} --passWithNoTests
+
+pre-push:
+  jobs:
+    - name: test (full)
+      run: pnpm test

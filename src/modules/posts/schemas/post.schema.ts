@@ -1,10 +1,12 @@
 import { AbstractDocument } from '@database/abstract.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
+import { MAX_RELATIONSHIPS_PER_USER } from '@common/constants';
 
 export enum PostVisibility {
   FRIEND_ONLY = 'friend-only',
-  PUBLIC = 'public',
+  ME_ONLY = 'me-only',
+  SELECTED_USERS = 'selected-users',
 }
 
 @Schema({ collection: 'posts', timestamps: true })
@@ -27,6 +29,17 @@ export class Post extends AbstractDocument {
     default: PostVisibility.FRIEND_ONLY,
   })
   visibility: PostVisibility;
+
+  @Prop({
+    type: [{ type: Types.ObjectId, ref: 'User' }],
+    default: undefined,
+    validate: {
+      validator: (value?: Types.ObjectId[]) =>
+        !value || value.length <= MAX_RELATIONSHIPS_PER_USER,
+      message: `allowedViewerUserIds must have at most ${MAX_RELATIONSHIPS_PER_USER} items`,
+    },
+  })
+  allowedViewerUserIds?: Types.ObjectId[];
 
   @Prop({ default: false })
   isOwnerViewedPost: boolean;
