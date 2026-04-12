@@ -6,9 +6,11 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
+import { randomInt } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../users/services/user.service';
 import { UserValidationService } from '../users/services/user-validation.service';
+import { UserRepository } from '@modules/users/repositories/user.repository';
 import {
   StoredRefreshToken,
   AuthRepository,
@@ -16,11 +18,17 @@ import {
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { GoogleSignInDto } from './dto/google-signin.dto';
 import {
   AuthResponse,
   RefreshTokenResponse,
 } from './interfaces/auth-response.interface';
 import { throwInvalidCredentials } from '@common/utils';
+import type {
+  GooglePayload,
+  GoogleSignInResponse,
+} from './interfaces/google-signin-result.interface';
+import type { User } from '@modules/users/schemas/user.schema';
 
 @Injectable()
 export class AuthService {
@@ -29,6 +37,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly userService: UserService,
     private readonly userValidationService: UserValidationService,
+    private readonly userRepository: UserRepository,
     private readonly authRepository: AuthRepository,
     private readonly relationshipService: RelationshipService,
   ) {}
@@ -108,6 +117,118 @@ export class AuthService {
       },
       user: this.userService.buildUserProfileResponse(user),
     };
+  }
+
+  private async verifyGoogleToken(idToken: string): Promise<GooglePayload> {
+    const clientId = this.configService.get<string>('google.clientId');
+    if (!clientId) {
+      throw new InternalServerErrorException('Missing GOOGLE_CLIENT_ID');
+    }
+
+    try {
+      const { OAuth2Client } = await import('google-auth-library');
+      const client = new OAuth2Client(clientId);
+
+      const ticket = await client.verifyIdToken({
+        idToken,
+        audience: clientId,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload?.sub || !payload?.email) {
+        throw new UnauthorizedException('INVALID_GOOGLE_TOKEN');
+      }
+
+      return {
+        email: payload.email,
+        googleId: payload.sub,
+        firstName: payload.given_name ?? payload.name ?? '',
+        lastName: payload.family_name ?? '',
+      };
+    } catch {
+      throw new UnauthorizedException('INVALID_GOOGLE_TOKEN');
+    }
+  }
+
+  private async generateDefaultUsername(): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const suffix = randomInt(0, 1_000_000).toString().padStart(6, '0');
+      const username = `snaplet_user_${suffix}`;
+      const taken = await this.userValidationService.isUsernameTaken(username);
+      if (!taken) return username;
+    }
+
+    throw new InternalServerErrorException('Unable to generate username');
+  }
+
+  private async issueTokensForUser(
+    user: User,
+    deviceId: string,
+  ): Promise<AuthResponse> {
+    const userId = user._id.toString();
+    const authSessionId = this.createAuthSessionId();
+    await this.authRepository.setActiveAuthSession(
+      userId,
+      authSessionId,
+      deviceId,
+    );
+    const accessToken = this.generateAccessToken(
+      userId,
+      authSessionId,
+      deviceId,
+    );
+    const refreshToken = this.createRefreshToken();
+    await this.saveRefreshToken(userId, refreshToken);
+
+    return {
+      token: { accessToken, refreshToken },
+      user: this.userService.buildUserProfileResponse(user),
+    };
+  }
+
+  async loginWithGoogle(
+    dto: GoogleSignInDto,
+    deviceId: string,
+  ): Promise<GoogleSignInResponse> {
+    const googlePayload = await this.verifyGoogleToken(dto.idToken);
+    const { email, googleId, firstName, lastName } = googlePayload;
+
+    // CASE A: already has Google account linked
+    let user = await this.userRepository.findByGoogleId(googleId);
+    if (user) {
+      const tokens = await this.issueTokensForUser(user, deviceId);
+      return {
+        ...tokens,
+        requiresOnboarding: user.isOnboardingComplete === false,
+      };
+    }
+
+    // CASE B: local account exists with same email -> link & login
+    const existingLocal = await this.userRepository.findActiveByEmail(email);
+    if (existingLocal) {
+      user = await this.userRepository.linkGoogleId(
+        existingLocal._id.toString(),
+        googleId,
+      );
+      const tokens = await this.issueTokensForUser(user, deviceId);
+      return { ...tokens, requiresOnboarding: false };
+    }
+
+    // CASE C: brand new user -> create partial account with defaults, require onboarding
+    const username = await this.generateDefaultUsername();
+    user = await this.userRepository.create({
+      email,
+      googleId,
+      authProvider: 'google',
+      password: null,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      username,
+      isOnboardingComplete: false,
+    });
+
+    const tokens = await this.issueTokensForUser(user, deviceId);
+    return { ...tokens, requiresOnboarding: true };
   }
 
   generateAccessToken(

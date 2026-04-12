@@ -13,6 +13,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RefreshTokenResponse } from './interfaces/auth-response.interface';
+import { GoogleSignInDto } from './dto/google-signin.dto';
+import type { GoogleSignInResponse } from './interfaces/google-signin-result.interface';
 import { AccessToken, DeviceId } from '@common/decorators/header.decorator';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { DeviceDailyLimitGuard } from '@common/guards/device-daily-limit.guard';
@@ -37,6 +39,15 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto, @DeviceId() deviceId: string) {
     return this.authService.login(loginDto, deviceId);
+  }
+
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  async googleSignIn(
+    @Body() dto: GoogleSignInDto,
+    @DeviceId() deviceId: string,
+  ): Promise<GoogleSignInResponse> {
+    return this.authService.loginWithGoogle(dto, deviceId);
   }
 
   @Post('refresh')
