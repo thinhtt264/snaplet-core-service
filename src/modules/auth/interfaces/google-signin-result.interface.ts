@@ -7,11 +7,6 @@ export interface GooglePayload {
   lastName: string;
 }
 
-export type GoogleSignInStatus =
-  | 'existing_google'
-  | 'merged_local'
-  | 'new_user';
-
 export interface GoogleSignInResponse extends AuthResponse {
   requiresOnboarding: boolean;
 }
