@@ -74,19 +74,24 @@ docker ps --filter name=${CONTAINER_NAME} --format 'table {{.Names}}\t{{.Status}
 echo ""
 echo "== [3/3] VERIFY =="
 bash infra/ec2/scripts/ssh-exec.sh "
+set -e
 echo 'Waiting 5s for container to start...'
 sleep 5
 
 echo 'Health check (HTTP):'
-curl -s -o /dev/null -w 'HTTP %{http_code}' http://localhost:4040/api/v1/health || echo ' (failed)'
-echo ''
 
 echo 'Health check (via Nginx HTTPS):'
-curl -sk -o /dev/null -w 'HTTPS %{http_code}' https://localhost/api/v1/health || echo ' (failed)'
-echo ''
+HTTPS_STATUS=\$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/api/v1/health || echo '000')
+echo \"HTTPS \$HTTPS_STATUS\"
+if [ \"\$HTTPS_STATUS\" != \"200\" ]; then
+  echo 'FAILED: Health check (HTTPS) is not 200'
+  echo 'Container logs (last 20 lines):'
+  docker logs --tail 20 ${CONTAINER_NAME}
+  exit 1
+fi
 
 echo 'Container logs (last 10 lines):'
-docker logs --tail 10 ${CONTAINER_NAME} 2>&1 || true
+docker logs --tail 10 ${CONTAINER_NAME}
 "
 
 echo ""

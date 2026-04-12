@@ -3,6 +3,7 @@ version: '3.8'
 services:
   app:
     image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+    platform: linux/arm64
     build:
       context: ../..
       dockerfile: infra/ec2/Dockerfile
