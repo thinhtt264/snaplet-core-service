@@ -55,11 +55,21 @@ export class UserValidationService {
       return null;
     }
 
+    if (!user.password) {
+      // Google accounts (or accounts without local password) cannot login via password.
+      return null;
+    }
+
     const isPasswordValid = await verifyPassword(password, user.password);
     if (!isPasswordValid) {
       return null;
     }
 
     return user;
+  }
+
+  async isUsernameTaken(username: string): Promise<boolean> {
+    const user = await this.userRepository.findActiveByUsername(username);
+    return !!user;
   }
 }

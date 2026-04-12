@@ -103,6 +103,10 @@ export default () => ({
     privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n') || '',
   },
 
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+  },
+
   /**
    * BullMQ Worker (notification push): same tuning idea as posts-unread.
    */

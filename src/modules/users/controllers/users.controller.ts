@@ -21,6 +21,7 @@ import { RequestAvatarUploadDto } from '../dto/request-avatar-upload.dto';
 import { ConfirmAvatarUploadDto } from '../dto/confirm-avatar-upload.dto';
 import { UpdateDisplayNameDto } from '../dto/update-display-name.dto';
 import { UpdateFcmTokenDto } from '../dto/update-fcm-token.dto';
+import { CompleteOnboardingDto } from '../dto/complete-onboarding.dto';
 import {
   AvatarUploadRequestResponse,
   IUserProfileResponse,
@@ -116,5 +117,15 @@ export class UsersController {
     @Body() dto: UpdateFcmTokenDto,
   ): Promise<void> {
     await this.userService.updateFcmToken(userId, dto.fcmToken);
+  }
+
+  @Patch('me/complete-onboarding')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async completeOnboarding(
+    @CurrentUserId() userId: string,
+    @Body() dto: CompleteOnboardingDto,
+  ): Promise<IUserProfileResponse> {
+    return this.userService.completeOnboarding(userId, dto);
   }
 }

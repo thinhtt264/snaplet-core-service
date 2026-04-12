@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +11,8 @@ import {
   IUserProfileResponse,
 } from '../interfaces/user-response.interface';
 import { UserRepository } from '../repositories/user.repository';
+import { UserValidationService } from './user-validation.service';
+import { CompleteOnboardingDto } from '../dto/complete-onboarding.dto';
 import { CacheService } from '@modules/cache/cache.service';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
@@ -30,6 +34,7 @@ export class UserService {
     private readonly userRepository: UserRepository,
     private readonly storageService: StorageService,
     private readonly cacheService: CacheService,
+    private readonly userValidationService: UserValidationService,
   ) {}
 
   async checkUserExists(userId: string): Promise<boolean> {
@@ -222,6 +227,47 @@ export class UserService {
       avatarUrls,
       createdAt: user.createdAt,
     };
+  }
+
+  async completeOnboarding(
+    userId: string,
+    dto: CompleteOnboardingDto,
+  ): Promise<IUserProfileResponse> {
+    const { firstName, lastName, username } = dto;
+    const user = await this.userRepository.findActiveById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isOnboardingComplete) {
+      // Prevent username changes via onboarding endpoint.
+      return this.buildUserProfileResponse(user);
+    }
+
+    const taken = await this.userValidationService.isUsernameTaken(username);
+    if (taken) {
+      throw new ConflictException('USERNAME_TAKEN');
+    }
+
+    const updated = await this.userRepository.update(userId, {
+      username: username,
+      firstName: firstName,
+      lastName: lastName,
+      isOnboardingComplete: true,
+    });
+
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.cacheService.invalidateByTag(`user:${userId}`);
+
+    // Extra safety: if username was still not set for any reason, block.
+    if (!updated.username) {
+      throw new ForbiddenException('ONBOARDING_REQUIRED');
+    }
+
+    return this.buildUserProfileResponse(updated);
   }
 
   async updateDisplayName(

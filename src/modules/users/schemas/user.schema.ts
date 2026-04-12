@@ -4,6 +4,18 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
 @Schema({ collection: 'users', timestamps: true })
 export class User extends AbstractDocument {
+  @Prop({ type: String, enum: ['local', 'google'], default: 'local' })
+  authProvider: 'local' | 'google';
+
+  @Prop({
+    type: String,
+    default: null,
+    index: true,
+    sparse: true,
+    unique: true,
+  })
+  googleId: string | null;
+
   @Prop({
     required: true,
     unique: true,
@@ -13,18 +25,21 @@ export class User extends AbstractDocument {
   })
   email: string;
 
-  @Prop({ required: true })
-  password: string;
+  @Prop({ type: String, required: false, default: null })
+  password: string | null;
 
   @Prop({
-    required: true,
+    type: String,
+    required: false,
     unique: true,
     index: true,
+    sparse: true,
     lowercase: true,
     trim: true,
     maxlength: USER_PROFILE_FIELD_MAX_LENGTH,
+    default: null,
   })
-  username: string;
+  username: string | null;
 
   @Prop({
     required: true,
@@ -49,6 +64,9 @@ export class User extends AbstractDocument {
   /** Single-device FCM registration token; new login overwrites previous. */
   @Prop({ type: String, default: null })
   fcmToken: string | null;
+
+  @Prop({ type: Boolean, default: true })
+  isOnboardingComplete: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
