@@ -78,8 +78,6 @@ set -e
 echo 'Waiting 5s for container to start...'
 sleep 5
 
-echo 'Health check (HTTP):'
-
 echo 'Health check (via Nginx HTTPS):'
 HTTPS_STATUS=\$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/api/v1/health || echo '000')
 echo \"HTTPS \$HTTPS_STATUS\"
