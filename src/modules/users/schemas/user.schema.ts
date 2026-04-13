@@ -9,12 +9,11 @@ export class User extends AbstractDocument {
 
   @Prop({
     type: String,
-    default: null,
     index: true,
     sparse: true,
     unique: true,
   })
-  googleId: string | null;
+  googleId?: string;
 
   @Prop({
     required: true,
