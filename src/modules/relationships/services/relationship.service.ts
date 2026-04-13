@@ -25,6 +25,8 @@ import { UserService } from '@modules/users/services/user.service';
 import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { SocketService } from '@modules/socket/socket.service';
+import { FRIEND_REQUEST_RECEIVED_EVENT } from '@modules/socket/events/socket-events';
 import {
   RELATIONSHIP_DELETED_EVENT,
   RelationshipDeletedEvent,
@@ -39,6 +41,7 @@ export class RelationshipService {
     private readonly cacheService: CacheService,
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly socketService: SocketService,
   ) {
     this.cacheTtlSeconds = this.configService.get<number>(
       'relationships.cache.ttlSeconds',
@@ -306,6 +309,12 @@ export class RelationshipService {
 
       await this.invalidateRelationshipsCache(relationship.user1Id.toString());
       await this.invalidateRelationshipsCache(relationship.user2Id.toString());
+
+      this.socketService.emitToUser(
+        targetUserId,
+        FRIEND_REQUEST_RECEIVED_EVENT,
+        null,
+      );
 
       return {
         id: relationship._id.toString(),
