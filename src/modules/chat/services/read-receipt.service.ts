@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
@@ -12,6 +12,7 @@ type DrizzleClient = PostgresJsDatabase<typeof schema>;
 export class ReadReceiptService {
   constructor(
     @Inject(DRIZZLE_CLIENT) private readonly db: DrizzleClient,
+    @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
   ) {}
 

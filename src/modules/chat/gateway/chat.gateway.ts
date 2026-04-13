@@ -8,7 +8,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '@common/redis/redis.service';
@@ -22,6 +22,8 @@ import {
   CHAT_TYPING_STOP,
 } from '../events/chat-socket-events';
 import { ConversationRepository } from '../repositories/conversation.repository';
+import { TypingService } from '../services/typing.service';
+import { ReadReceiptService } from '../services/read-receipt.service';
 
 @Injectable()
 @WebSocketGateway({
@@ -39,37 +41,15 @@ export class ChatGateway
 
   private readonly logger = new Logger(ChatGateway.name);
 
-  // Lazily set after module init to break circular dependency (services → gateway → services)
-  private typingService: {
-    start(c: string, u: string): Promise<void>;
-    stop(c: string, u: string): Promise<void>;
-  } | null = null;
-  private readReceiptService: {
-    markRead(c: string, u: string, m: string): Promise<void>;
-  } | null = null;
-  private conversationRepo: ConversationRepository | null = null;
-
   constructor(
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
+    @Inject(forwardRef(() => TypingService))
+    private readonly typingService: TypingService,
+    @Inject(forwardRef(() => ReadReceiptService))
+    private readonly readReceiptService: ReadReceiptService,
+    private readonly conversationRepo: ConversationRepository,
   ) {}
-
-  setTypingService(service: {
-    start(c: string, u: string): Promise<void>;
-    stop(c: string, u: string): Promise<void>;
-  }): void {
-    this.typingService = service;
-  }
-
-  setReadReceiptService(service: {
-    markRead(c: string, u: string, m: string): Promise<void>;
-  }): void {
-    this.readReceiptService = service;
-  }
-
-  setConversationRepository(repo: ConversationRepository): void {
-    this.conversationRepo = repo;
-  }
 
   afterInit(): void {
     this.server.use(this.createAuthMiddleware());
@@ -91,7 +71,6 @@ export class ChatGateway
     @ConnectedSocket() client: Socket & { userId: string },
     @MessageBody() payload: { conversationId: string },
   ): Promise<void> {
-    if (!this.conversationRepo) return;
     const member = await this.conversationRepo.getMember(
       payload.conversationId,
       client.userId,
@@ -113,9 +92,7 @@ export class ChatGateway
     @ConnectedSocket() client: Socket & { userId: string },
     @MessageBody() payload: { conversationId: string },
   ): Promise<void> {
-    if (this.typingService) {
-      await this.typingService.start(payload.conversationId, client.userId);
-    }
+    await this.typingService.start(payload.conversationId, client.userId);
   }
 
   @SubscribeMessage(CHAT_TYPING_STOP)
@@ -123,9 +100,7 @@ export class ChatGateway
     @ConnectedSocket() client: Socket & { userId: string },
     @MessageBody() payload: { conversationId: string },
   ): Promise<void> {
-    if (this.typingService) {
-      await this.typingService.stop(payload.conversationId, client.userId);
-    }
+    await this.typingService.stop(payload.conversationId, client.userId);
   }
 
   @SubscribeMessage(CHAT_MARK_READ)
@@ -133,13 +108,11 @@ export class ChatGateway
     @ConnectedSocket() client: Socket & { userId: string },
     @MessageBody() payload: { conversationId: string; messageId: string },
   ): Promise<void> {
-    if (this.readReceiptService) {
-      await this.readReceiptService.markRead(
-        payload.conversationId,
-        client.userId,
-        payload.messageId,
-      );
-    }
+    await this.readReceiptService.markRead(
+      payload.conversationId,
+      client.userId,
+      payload.messageId,
+    );
   }
 
   broadcastToRoom(convId: string, event: string, payload: unknown): void {

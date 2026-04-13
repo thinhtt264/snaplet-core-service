@@ -1,6 +1,5 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { PostgresModule } from '@database/postgres/postgres.module';
-import { StorageModule } from '@infrastructure/storage/storage.module';
 import { UsersModule } from '@modules/users/users.module';
 import { CommonJwtModule } from '@common/jwt/jwt.module';
 import { ChatController } from './controllers/chat.controller';
@@ -14,7 +13,7 @@ import { ConversationRepository } from './repositories/conversation.repository';
 import { MessageRepository } from './repositories/message.repository';
 import { ChatArchiveProcessor } from './processors/chat-archive.processor';
 @Module({
-  imports: [PostgresModule, StorageModule, UsersModule, CommonJwtModule],
+  imports: [PostgresModule, UsersModule, CommonJwtModule],
   controllers: [ChatController],
   providers: [
     ChatGateway,
@@ -29,18 +28,4 @@ import { ChatArchiveProcessor } from './processors/chat-archive.processor';
   ],
   exports: [ConversationService, MessageService],
 })
-export class ChatModule implements OnModuleInit {
-  constructor(
-    private readonly gateway: ChatGateway,
-    private readonly typingService: TypingService,
-    private readonly readReceiptService: ReadReceiptService,
-    private readonly conversationRepository: ConversationRepository,
-  ) {}
-
-  onModuleInit(): void {
-    // Wire up circular references after all providers are initialized
-    this.gateway.setTypingService(this.typingService);
-    this.gateway.setReadReceiptService(this.readReceiptService);
-    this.gateway.setConversationRepository(this.conversationRepository);
-  }
-}
+export class ChatModule {}

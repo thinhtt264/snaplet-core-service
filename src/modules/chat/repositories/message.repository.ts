@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
 import * as schema from '@database/postgres/schema';
@@ -280,6 +280,59 @@ export class MessageRepository {
         ) as (typeof schema.messageAttachments.$inferSelect)[],
       ),
     );
+  }
+
+  async findLastMessagesBatch(
+    convIds: string[],
+  ): Promise<Map<string, MessageResponse>> {
+    if (!convIds.length) return new Map();
+
+    // DISTINCT ON (conversation_id) with ORDER BY conversation_id, created_at DESC, id DESC
+    // → one row per conversation: the latest non-deleted message.
+    const lastMessages = await this.db
+      .selectDistinctOn([schema.messages.conversationId])
+      .from(schema.messages)
+      .where(
+        and(
+          inArray(schema.messages.conversationId, convIds),
+          isNull(schema.messages.deletedAt),
+        ),
+      )
+      .orderBy(
+        schema.messages.conversationId,
+        desc(schema.messages.createdAt),
+        desc(schema.messages.id),
+      );
+
+    if (!lastMessages.length) return new Map();
+
+    const messageIds = lastMessages.map((m) => m.id);
+
+    // Batch-fetch attachments for all last messages in one query.
+    const attachmentRows = await this.db
+      .select()
+      .from(schema.messageAttachments)
+      .where(inArray(schema.messageAttachments.messageId, messageIds));
+
+    const attachmentMap = new Map<
+      string,
+      (typeof schema.messageAttachments.$inferSelect)[]
+    >();
+    for (const att of attachmentRows) {
+      const list = attachmentMap.get(att.messageId) ?? [];
+      list.push(att);
+      attachmentMap.set(att.messageId, list);
+    }
+
+    const result = new Map<string, MessageResponse>();
+    for (const message of lastMessages) {
+      const attachments = attachmentMap.get(message.id) ?? [];
+      result.set(
+        message.conversationId,
+        this.toMessageResponse(message, null, attachments),
+      );
+    }
+    return result;
   }
 
   async findById(messageId: string): Promise<MessageResponse | null> {

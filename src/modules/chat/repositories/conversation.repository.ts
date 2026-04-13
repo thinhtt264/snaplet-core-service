@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { intersect } from 'drizzle-orm/pg-core';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
@@ -107,5 +107,25 @@ export class ConversationRepository {
       )
       .limit(1);
     return rows[0]?.userId ?? null;
+  }
+
+  async getPartnerUserIdsBatch(
+    convIds: string[],
+    userId: string,
+  ): Promise<Map<string, string>> {
+    if (!convIds.length) return new Map();
+    const rows = await this.db
+      .select({
+        conversationId: schema.conversationMembers.conversationId,
+        partnerId: schema.conversationMembers.userId,
+      })
+      .from(schema.conversationMembers)
+      .where(
+        and(
+          inArray(schema.conversationMembers.conversationId, convIds),
+          ne(schema.conversationMembers.userId, userId),
+        ),
+      );
+    return new Map(rows.map((r): [string, string] => [r.conversationId, r.partnerId]));
   }
 }

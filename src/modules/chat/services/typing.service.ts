@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { RedisService } from '@common/redis/redis.service';
 import { TYPING_KEY, TYPING_TTL_MS } from '@common/constants/chat.constants';
 import {
@@ -11,6 +11,7 @@ import { ChatGateway } from '../gateway/chat.gateway';
 export class TypingService {
   constructor(
     private readonly redis: RedisService,
+    @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
   ) {}
 
