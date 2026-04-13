@@ -26,7 +26,7 @@ import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SocketService } from '@modules/socket/socket.service';
-import { FRIEND_REQUEST_RECEIVED_EVENT } from '@modules/socket/events/socket-events';
+import { FRIEND_REQUEST_UPDATED_EVENT } from '@modules/socket/events/socket-events';
 import {
   RELATIONSHIP_DELETED_EVENT,
   RelationshipDeletedEvent,
@@ -130,8 +130,8 @@ export class RelationshipService {
               status,
             );
           return relationships.map((relationship) => ({
-            id: relationship.relationshipId, // ID của relationship document
-            userId: relationship.userId, // ID của friend user
+            id: relationship.relationshipId,
+            userId: relationship.userId,
             username: relationship.username,
             firstName: relationship.firstName,
             lastName: relationship.lastName,
@@ -141,7 +141,7 @@ export class RelationshipService {
             createdAt: relationship.createdAt,
             status: relationship.status,
           }));
-        } catch (error) {
+        } catch (error: any) {
           throw new InternalServerErrorException(
             error.message || 'Failed to fetch relationships',
           );
@@ -285,6 +285,19 @@ export class RelationshipService {
     await this.invalidateRelationshipsCache(userId);
   }
 
+  private notifyOtherUser(
+    currentUserId: string,
+    user1Id: string,
+    user2Id: string,
+  ): void {
+    const otherUserId = currentUserId === user1Id ? user2Id : user1Id;
+    this.socketService.emitToUser(
+      otherUserId,
+      FRIEND_REQUEST_UPDATED_EVENT,
+      null,
+    );
+  }
+
   async create(
     initiatorId: string,
     targetUserId: string,
@@ -310,10 +323,10 @@ export class RelationshipService {
       await this.invalidateRelationshipsCache(relationship.user1Id.toString());
       await this.invalidateRelationshipsCache(relationship.user2Id.toString());
 
-      this.socketService.emitToUser(
-        targetUserId,
-        FRIEND_REQUEST_RECEIVED_EVENT,
-        null,
+      this.notifyOtherUser(
+        initiatorId,
+        relationship.user1Id.toString(),
+        relationship.user2Id.toString(),
       );
 
       return {
@@ -367,10 +380,11 @@ export class RelationshipService {
     }
 
     // Business validation: Authorization check
-    const isUser1 = relationship.user1Id.equals(userObjectId);
-    const isUser2 = relationship.user2Id.equals(userObjectId);
+    const isParticipant =
+      relationship.user1Id.equals(userObjectId) ||
+      relationship.user2Id.equals(userObjectId);
 
-    if (!isUser1 && !isUser2) {
+    if (!isParticipant) {
       throw new ForbiddenException(
         'You do not have permission to update this relationship',
       );
@@ -416,6 +430,12 @@ export class RelationshipService {
       updatedRelationship.user2Id.toString(),
     );
 
+    this.notifyOtherUser(
+      userId,
+      updatedRelationship.user1Id.toString(),
+      updatedRelationship.user2Id.toString(),
+    );
+
     return {
       id: updatedRelationship._id.toString(),
       user1Id: updatedRelationship.user1Id.toString(),
@@ -451,10 +471,11 @@ export class RelationshipService {
     }
 
     // Business validation: Authorization check
-    const isUser1 = relationship.user1Id.equals(userObjectId);
-    const isUser2 = relationship.user2Id.equals(userObjectId);
+    const isParticipant =
+      relationship.user1Id.equals(userObjectId) ||
+      relationship.user2Id.equals(userObjectId);
 
-    if (!isUser1 && !isUser2) {
+    if (!isParticipant) {
       throw new ForbiddenException(
         'You do not have permission to delete this relationship',
       );
@@ -465,6 +486,12 @@ export class RelationshipService {
 
     // Delete relationship directly from object (optimized - no duplicate query)
     await this.relationshipRepository.deleteRelationship(relationship);
+
+    this.notifyOtherUser(
+      userId,
+      relationship.user1Id.toString(),
+      relationship.user2Id.toString(),
+    );
 
     this.eventEmitter.emit(RELATIONSHIP_DELETED_EVENT, {
       user1Id: relationship.user1Id.toString(),
