@@ -7,6 +7,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import configuration from '@config/configuration';
 import { validationSchema } from '@config/validation.schema';
 import { DatabaseModule } from '@database/database.module';
+import { PostgresModule } from '@database/postgres/postgres.module';
 import { CommonJwtModule } from '@common/jwt/jwt.module';
 import { RedisModule } from '@common/redis/redis.module';
 import { CacheModule } from '@modules/cache/cache.module';
@@ -17,6 +18,7 @@ import { RelationshipsModule } from '@modules/relationships/relationships.module
 import { AuthModule } from '@modules/auth/auth.module';
 import { SocketModule } from '@modules/socket/socket.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
+import { ChatModule } from '@modules/chat/chat.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TransformInterceptor } from '@common/interceptors/transform.interceptor';
@@ -49,6 +51,7 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
       }),
     }),
     DatabaseModule,
+    PostgresModule,
     RedisModule,
     CacheModule,
     CommonJwtModule,
@@ -59,6 +62,7 @@ import { FingerprintGuard } from '@common/guards/fingerprint.guard';
     RelationshipsModule,
     SocketModule,
     NotificationsModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [
