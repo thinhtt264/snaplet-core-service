@@ -27,9 +27,14 @@ export class MessageService {
     private readonly gateway: ChatGateway,
   ) {}
 
-  async send(dto: SendMessageDto, senderId: string): Promise<MessageResponse> {
+  async send(
+    conversationId: string,
+    dto: SendMessageDto,
+    senderId: string,
+  ): Promise<MessageResponse> {
     const message = await this.messageRepository.insertMessage({
       ...dto,
+      conversationId,
       senderId,
     });
 
@@ -41,11 +46,11 @@ export class MessageService {
     }
 
     await this.conversationRepository.updateLastMessageAt(
-      dto.conversationId,
+      conversationId,
       new Date(message.createdAt),
     );
 
-    this.gateway.broadcastToRoom(dto.conversationId, CHAT_MESSAGE_NEW, message);
+    this.gateway.broadcastToRoom(conversationId, CHAT_MESSAGE_NEW, message);
 
     return message;
   }

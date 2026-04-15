@@ -1,4 +1,4 @@
-import { CursorPagination } from '@common/types';
+import { CursorPage } from '@common/types';
 import { MediaResponse } from '@modules/media/interfaces/media-response.interface';
 import {
   AvatarUrlsResponse,
@@ -16,10 +16,7 @@ export interface PostResponse extends UserBasicInfoResponse {
   isOwnerViewedPost: boolean;
 }
 
-export interface GetPostsResponse {
-  data: PostResponse[];
-  pagination: CursorPagination;
-}
+export type GetPostsResponse = CursorPage<PostResponse>;
 
 export interface PostActivityResponse {
   postId: string;

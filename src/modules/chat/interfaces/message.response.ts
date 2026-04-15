@@ -1,3 +1,4 @@
+import { CursorPage } from '@common/types';
 import { MessageType } from '../dto/send-message.dto';
 
 export interface AttachmentResponse {
@@ -27,7 +28,4 @@ export interface MessageResponse {
   createdAt: string;
 }
 
-export interface PaginatedMessages {
-  data: MessageResponse[];
-  nextCursor: string | null;
-}
+export type PaginatedMessages = CursorPage<MessageResponse>;

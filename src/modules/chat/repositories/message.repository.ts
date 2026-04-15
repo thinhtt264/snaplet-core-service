@@ -31,7 +31,7 @@ export class MessageRepository {
   constructor(@Inject(DRIZZLE_CLIENT) private readonly db: DrizzleClient) {}
 
   async insertMessage(
-    dto: SendMessageDto & { senderId: string },
+    dto: SendMessageDto & { conversationId: string; senderId: string },
   ): Promise<MessageResponse> {
     // ON CONFLICT (client_uuid) DO NOTHING RETURNING *
     // If conflict (offline retry): query by client_uuid and return existing row
@@ -199,7 +199,7 @@ export class MessageRepository {
           })
         : null;
 
-    return { data, nextCursor };
+    return { data, pagination: { limit, nextCursor } };
   }
 
   async pinMessage(

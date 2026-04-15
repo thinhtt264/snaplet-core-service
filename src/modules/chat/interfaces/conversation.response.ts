@@ -1,3 +1,4 @@
+import { CursorPage } from '@common/types';
 import { MessageResponse } from './message.response';
 
 export interface PartnerInfo {
@@ -11,7 +12,9 @@ export interface ConversationResponse {
   id: string;
   partner: PartnerInfo;
   lastMessage: MessageResponse | null;
-  unreadCount: number;
+  hasUnread: boolean;
   lastMessageAt: string | null;
   createdAt: string;
 }
+
+export type PaginatedConversations = CursorPage<ConversationResponse>;

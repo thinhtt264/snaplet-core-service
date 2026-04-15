@@ -15,9 +15,13 @@ import { CurrentUserId } from '@common/decorators/current-user.decorator';
 import { ConversationService } from '../services/conversation.service';
 import { MessageService } from '../services/message.service';
 import { CreateConversationDto } from '../dto/create-conversation.dto';
+import { GetConversationsDto } from '../dto/get-conversations.dto';
 import { SendMessageDto } from '../dto/send-message.dto';
 import { LoadMessagesDto } from '../dto/load-messages.dto';
-import { ConversationResponse } from '../interfaces/conversation.response';
+import {
+  ConversationResponse,
+  PaginatedConversations,
+} from '../interfaces/conversation.response';
 import {
   MessageResponse,
   PaginatedMessages,
@@ -49,8 +53,13 @@ export class ChatController {
   @Get()
   async getConversations(
     @CurrentUserId() userId: string,
-  ): Promise<ConversationResponse[]> {
-    return this.conversationService.getConversationList(userId);
+    @Query() query: GetConversationsDto,
+  ): Promise<PaginatedConversations> {
+    return this.conversationService.getConversationList(
+      userId,
+      query.cursor,
+      query.limit,
+    );
   }
 
   @Get(':convId/messages')
@@ -74,7 +83,7 @@ export class ChatController {
     @Param('convId') convId: string,
     @Body() dto: SendMessageDto,
   ): Promise<MessageResponse> {
-    return this.messageService.send({ ...dto, conversationId: convId }, userId);
+    return this.messageService.send(convId, dto, userId);
   }
 
   @Delete(':convId/messages/:messageId')

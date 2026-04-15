@@ -122,10 +122,7 @@ export class PostService {
 
       return {
         data: this.transformPosts(result.posts, userId),
-        pagination: {
-          limit,
-          nextCursor,
-        },
+        pagination: { limit, nextCursor },
       };
     } catch (error: any) {
       if (error instanceof HttpException) {

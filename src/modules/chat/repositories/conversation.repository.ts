@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { intersect } from 'drizzle-orm/pg-core';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
@@ -60,8 +60,29 @@ export class ConversationRepository {
       .where(eq(schema.conversations.id, convId));
   }
 
-  async findAllByUserId(userId: string) {
-    // Returns conversations with last message joined in
+  async findAllByUserId(
+    userId: string,
+    cursor?: { lastMessageAt: Date | null; id: string },
+    limit: number = 20,
+  ) {
+    // Keyset pagination on (lastMessageAt DESC NULLS LAST, id DESC).
+    // NULL lastMessageAt rows sort last, so when cursor is null we only page
+    // within the null bucket (same-null, smaller id).
+    const cursorClause = cursor
+      ? cursor.lastMessageAt
+        ? or(
+            lt(schema.conversations.lastMessageAt, cursor.lastMessageAt),
+            and(
+              eq(schema.conversations.lastMessageAt, cursor.lastMessageAt),
+              lt(schema.conversations.id, cursor.id),
+            ),
+          )
+        : and(
+            isNull(schema.conversations.lastMessageAt),
+            lt(schema.conversations.id, cursor.id),
+          )
+      : undefined;
+
     const rows = await this.db
       .select({
         conversation: schema.conversations,
@@ -72,8 +93,11 @@ export class ConversationRepository {
         schema.conversations,
         eq(schema.conversationMembers.conversationId, schema.conversations.id),
       )
-      .where(eq(schema.conversationMembers.userId, userId))
-      .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`);
+      .where(and(eq(schema.conversationMembers.userId, userId), cursorClause))
+      .orderBy(
+        sql`${schema.conversations.lastMessageAt} DESC NULLS LAST, ${schema.conversations.id} DESC`,
+      )
+      .limit(limit + 1);
 
     return rows;
   }
@@ -126,6 +150,8 @@ export class ConversationRepository {
           ne(schema.conversationMembers.userId, userId),
         ),
       );
-    return new Map(rows.map((r): [string, string] => [r.conversationId, r.partnerId]));
+    return new Map(
+      rows.map((r): [string, string] => [r.conversationId, r.partnerId]),
+    );
   }
 }

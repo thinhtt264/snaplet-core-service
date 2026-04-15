@@ -34,9 +34,6 @@ export class AttachmentDto {
 
 export class SendMessageDto {
   @IsUUID()
-  conversationId: string;
-
-  @IsUUID()
   clientUuid: string;
 
   @IsEnum(MessageType)
