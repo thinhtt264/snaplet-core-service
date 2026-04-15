@@ -1,6 +1,6 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { UserRepository } from '../repositories/user.repository';
-import { verifyPassword } from '@common/utils';
+import { throwEmailRegisteredWithGoogle, verifyPassword } from '@common/utils';
 import { User } from '../schemas/user.schema';
 
 @Injectable()
@@ -30,12 +30,14 @@ export class UserValidationService {
   }
 
   async checkEmailAvailable(email: string): Promise<{ available: boolean }> {
-    try {
-      await this.validateEmailUnique(email);
-      return { available: true };
-    } catch {
-      return { available: false };
+    const existing = await this.userRepository.findActiveByEmail(email);
+    if (!existing) return { available: true };
+
+    if (existing.authProvider === 'google') {
+      throwEmailRegisteredWithGoogle();
     }
+
+    return { available: false };
   }
 
   async checkUsernameAvailable(
