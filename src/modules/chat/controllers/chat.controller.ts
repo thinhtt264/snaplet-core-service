@@ -27,9 +27,10 @@ import {
   PaginatedMessages,
 } from '../interfaces/message.response';
 import { CHAT_MESSAGE_PAGE_SIZE } from '@common/constants/chat.constants';
+import { ChatAccessGuard } from '../guards/chat-access.guard';
 
 @Controller('conversations')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ChatAccessGuard)
 export class ChatController {
   constructor(
     private readonly conversationService: ConversationService,

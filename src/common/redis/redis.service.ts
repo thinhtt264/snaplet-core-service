@@ -282,6 +282,39 @@ export class RedisService implements OnModuleDestroy {
     );
   }
 
+  /**
+   * Fetch multiple keys in a single round-trip (Redis MGET).
+   * Returns an array aligned with `keys`: null for each miss or unavailable Redis.
+   */
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    if (!keys.length) return [];
+    return this.safeExecute(
+      () => this.redis.mget(...keys),
+      keys.map(() => null),
+      'mget',
+    );
+  }
+
+  /**
+   * Set multiple key-value pairs with individual TTLs in a single pipeline round-trip.
+   */
+  async mset(
+    entries: Array<{ key: string; value: string; ttlSeconds: number }>,
+  ): Promise<void> {
+    if (!entries.length) return;
+    await this.safeExecute(
+      async () => {
+        const pipeline = this.redis.pipeline();
+        for (const { key, value, ttlSeconds } of entries) {
+          pipeline.set(key, value, 'EX', ttlSeconds);
+        }
+        await pipeline.exec();
+      },
+      undefined,
+      'mset',
+    );
+  }
+
   async multiSetWithExpire(
     entries: Array<{
       key: string;

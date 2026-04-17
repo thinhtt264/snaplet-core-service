@@ -18,8 +18,6 @@ export class UnreadCountService {
 
     const convIdsArray = `{${convIds.join(',')}}`;
 
-    // Single query: for each conversation, check if any unread message exists
-    // (sender != me, not deleted, newer than last read marker)
     const rows = await this.db.execute<{
       conversation_id: string;
       has_unread: boolean;

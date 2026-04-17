@@ -19,6 +19,12 @@ export const REDIS_KEY_FEATURES = {
   POST_CREATE_DAILY_LIMIT: 'post:create_daily_limit',
   // Post reactions (owner actor list)
   POST_REACTIONS_CACHE: 'post:reactions_cache',
+  // Chat conversation membership check
+  CHAT_CONVERSATION_MEMBER: 'chat:conversation_member',
+  // Chat partner profile cache (keyed by userId)
+  CHAT_PARTNER_PROFILE: 'chat:partner_profile',
+  // Chat last message per conversation cache (keyed by convId)
+  CHAT_CONV_LAST_MESSAGE: 'chat:conv_last_msg',
 } as const;
 
 export type RedisKeyFeature =

@@ -116,6 +116,20 @@ export class ConversationRepository {
     return rows[0] ?? null;
   }
 
+  async getMemberUserIds(convId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ userId: schema.conversationMembers.userId })
+      .from(schema.conversationMembers)
+      .where(eq(schema.conversationMembers.conversationId, convId));
+    return rows.map((r) => r.userId);
+  }
+
+  async delete(convId: string): Promise<void> {
+    await this.db
+      .delete(schema.conversations)
+      .where(eq(schema.conversations.id, convId));
+  }
+
   async getPartnerUserId(
     convId: string,
     userId: string,

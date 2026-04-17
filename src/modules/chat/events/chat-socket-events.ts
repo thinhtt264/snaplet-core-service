@@ -6,6 +6,7 @@ export const CHAT_TYPING_STOP = 'chat:typing_stop';
 export const CHAT_MARK_READ = 'chat:mark_read';
 
 // Server → Client
+export const CHAT_CONVERSATION_UPDATED = 'chat:conversation.updated';
 export const CHAT_MESSAGE_NEW = 'chat:message.new';
 export const CHAT_MESSAGE_DELETED = 'chat:message.deleted';
 export const CHAT_MESSAGE_READ = 'chat:message.read';

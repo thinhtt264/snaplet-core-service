@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { PostgresModule } from '@database/postgres/postgres.module';
 import { UsersModule } from '@modules/users/users.module';
+import { RelationshipsModule } from '@modules/relationships/relationships.module';
 import { CommonJwtModule } from '@common/jwt/jwt.module';
+import { SocketModule } from '@modules/socket/socket.module';
 import { ChatController } from './controllers/chat.controller';
 import { ChatGateway } from './gateway/chat.gateway';
 import { ConversationService } from './services/conversation.service';
@@ -12,8 +14,16 @@ import { UnreadCountService } from './services/unread-count.service';
 import { ConversationRepository } from './repositories/conversation.repository';
 import { MessageRepository } from './repositories/message.repository';
 import { ChatArchiveProcessor } from './processors/chat-archive.processor';
+import { ChatAccessGuard } from './guards/chat-access.guard';
+
 @Module({
-  imports: [PostgresModule, UsersModule, CommonJwtModule],
+  imports: [
+    PostgresModule,
+    UsersModule,
+    RelationshipsModule,
+    CommonJwtModule,
+    SocketModule,
+  ],
   controllers: [ChatController],
   providers: [
     ChatGateway,
@@ -25,6 +35,7 @@ import { ChatArchiveProcessor } from './processors/chat-archive.processor';
     ConversationRepository,
     MessageRepository,
     ChatArchiveProcessor,
+    ChatAccessGuard,
   ],
   exports: [ConversationService, MessageService],
 })

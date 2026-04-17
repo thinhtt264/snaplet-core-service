@@ -8,7 +8,13 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  UseGuards,
+} from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '@common/redis/redis.service';
@@ -21,10 +27,11 @@ import {
   CHAT_TYPING_START,
   CHAT_TYPING_STOP,
 } from '../events/chat-socket-events';
-import { ConversationRepository } from '../repositories/conversation.repository';
 import { TypingService } from '../services/typing.service';
 import { ReadReceiptService } from '../services/read-receipt.service';
+import { ChatAccessGuard } from '../guards/chat-access.guard';
 
+@UseGuards(ChatAccessGuard)
 @Injectable()
 @WebSocketGateway({
   namespace: '/chat',
@@ -48,7 +55,6 @@ export class ChatGateway
     private readonly typingService: TypingService,
     @Inject(forwardRef(() => ReadReceiptService))
     private readonly readReceiptService: ReadReceiptService,
-    private readonly conversationRepo: ConversationRepository,
   ) {}
 
   afterInit(): void {
@@ -58,8 +64,19 @@ export class ChatGateway
   handleConnection(client: Socket & { userId?: string }): void {
     if (!client.userId) {
       client.disconnect();
+      return;
     }
-    this.logger.debug(`Chat WS connected, userId=${client.userId}`);
+
+    const conversationId = client.handshake?.auth?.conversationId as
+      | string
+      | undefined;
+    if (conversationId) {
+      void client.join(`conv:${conversationId}`);
+    }
+
+    this.logger.debug(
+      `Chat WS connected, userId=${client.userId}, convId=${conversationId}`,
+    );
   }
 
   handleDisconnect(client: Socket & { userId?: string }): void {
@@ -67,15 +84,10 @@ export class ChatGateway
   }
 
   @SubscribeMessage(CHAT_JOIN_CONVERSATION)
-  async handleJoin(
+  handleJoin(
     @ConnectedSocket() client: Socket & { userId: string },
     @MessageBody() payload: { conversationId: string },
-  ): Promise<void> {
-    const member = await this.conversationRepo.getMember(
-      payload.conversationId,
-      client.userId,
-    );
-    if (!member) return;
+  ): void {
     client.join(`conv:${payload.conversationId}`);
   }
 

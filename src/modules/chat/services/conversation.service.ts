@@ -8,7 +8,23 @@ import {
   PaginatedConversations,
 } from '../interfaces/conversation.response';
 import { MessageRepository } from '../repositories/message.repository';
+import { MessageResponse } from '../interfaces/message.response';
 import { ImageSizeKey } from '@common/types';
+import { CacheService } from '@modules/cache/cache.service';
+import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
+import {
+  CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
+  CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
+  PARTNER_PROFILE_CACHE_TTL_SECONDS,
+} from '@common/constants/chat.constants';
+
+interface CachedPartnerProfile {
+  id: string;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  avatarKey: string | null;
+}
 
 @Injectable()
 export class ConversationService {
@@ -20,6 +36,7 @@ export class ConversationService {
     private readonly unreadCountService: UnreadCountService,
     private readonly userService: UserService,
     private readonly userRepository: UserRepository,
+    private readonly cacheService: CacheService,
   ) {}
 
   async findOrCreateDirect(
@@ -54,6 +71,51 @@ export class ConversationService {
     return { id: created.id, isNew: true };
   }
 
+  async updateLastMessageAt(convId: string, timestamp: Date): Promise<void> {
+    await this.conversationRepository.updateLastMessageAt(convId, timestamp);
+  }
+
+  async isMember(convId: string, userId: string): Promise<boolean> {
+    return this.cacheService.getOrCompute(
+      REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
+      `${convId}:${userId}`,
+      async () => {
+        const member = await this.conversationRepository.getMember(
+          convId,
+          userId,
+        );
+        return !!member;
+      },
+      CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
+      { shouldCache: (value) => value === true },
+    );
+  }
+
+  async getMemberUserIds(convId: string): Promise<string[]> {
+    return this.cacheService.getOrCompute(
+      REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
+      `${convId}:members`,
+      () => this.conversationRepository.getMemberUserIds(convId),
+      CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
+    );
+  }
+
+  async deleteConversation(convId: string): Promise<void> {
+    const memberUserIds =
+      await this.conversationRepository.getMemberUserIds(convId);
+
+    await this.conversationRepository.delete(convId);
+
+    await Promise.all(
+      memberUserIds.map((userId) =>
+        this.cacheService.invalidate(
+          REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
+          `${convId}:${userId}`,
+        ),
+      ),
+    );
+  }
+
   async getConversationList(
     userId: string,
     cursor?: string,
@@ -67,14 +129,12 @@ export class ConversationService {
       parsed,
       limit,
     );
-    this.logger.debug(`[getConversationList] rows=${rows.length}`);
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
 
     const convIds = page.map((row) => row.conversation.id);
 
-    // Single query to get all partner userIds
     const partnerIdMap =
       await this.conversationRepository.getPartnerUserIdsBatch(convIds, userId);
     this.logger.debug(
@@ -82,19 +142,44 @@ export class ConversationService {
     );
     const uniquePartnerIds = [...new Set(partnerIdMap.values())];
 
-    // Bulk fetch partner user info
-    const partnerUsers =
-      await this.userRepository.findManyByIds(uniquePartnerIds);
-    this.logger.debug(
-      `[getConversationList] partnerUsers=${partnerUsers.length}`,
-    );
-    const partnerMap = new Map(partnerUsers.map((u) => [u._id.toString(), u]));
+    // Resolve partner profiles, last messages, and unread flags in parallel.
+    // mgetOrCompute issues a single MGET + single pipeline MSET per group,
+    // with one batched DB call for all misses.
+    const [partnerMap, lastMessageMap, hasUnreadMap] = await Promise.all([
+      // Partner profiles: MGET → batch MongoDB fetch for misses → pipeline MSET.
+      this.cacheService.mgetOrCompute<CachedPartnerProfile>(
+        REDIS_KEY_FEATURES.CHAT_PARTNER_PROFILE,
+        uniquePartnerIds,
+        async (missIds) => {
+          const users = await this.userRepository.findManyByIds(missIds);
+          return new Map(
+            users.map((u) => [
+              u._id.toString(),
+              {
+                id: u._id.toString(),
+                username: u.username ?? null,
+                firstName: u.firstName ?? null,
+                lastName: u.lastName ?? null,
+                avatarKey: u.avatarKey ?? null,
+              },
+            ]),
+          );
+        },
+        PARTNER_PROFILE_CACHE_TTL_SECONDS,
+      ),
 
-    // Batch fetch has-unread flags + last messages in parallel — eliminates N+1 queries.
-    const [hasUnreadMap, lastMessageMap] = await Promise.all([
+      // Last messages: MGET → batch DB fetch for misses → pipeline MSET.
+      this.cacheService.mgetOrCompute<MessageResponse>(
+        REDIS_KEY_FEATURES.CHAT_CONV_LAST_MESSAGE,
+        convIds,
+        (missConvIds) =>
+          this.messageRepository.findLastMessagesBatch(missConvIds),
+        CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
+      ),
+
       this.unreadCountService.getHasUnreadBatch(convIds, userId),
-      this.messageRepository.findLastMessagesBatch(convIds),
     ]);
+
     this.logger.debug(
       `[getConversationList] hasUnreadMap size=${hasUnreadMap.size}, lastMessageMap size=${lastMessageMap.size}`,
     );
@@ -102,10 +187,10 @@ export class ConversationService {
     const data = page.map((row) => {
       const { conversation } = row;
       const partnerId = partnerIdMap.get(conversation.id) ?? null;
-      const partnerUser = partnerId ? partnerMap.get(partnerId) : null;
+      const partnerProfile = partnerId ? partnerMap.get(partnerId) : null;
 
-      const avatarUrls = partnerUser
-        ? this.userService.getAvatarUrlsForKey(partnerUser.avatarKey, {
+      const avatarUrls = partnerProfile?.avatarKey
+        ? this.userService.getAvatarUrlsForKey(partnerProfile.avatarKey, {
             sizes: [ImageSizeKey.SM],
           })
         : null;
@@ -117,12 +202,12 @@ export class ConversationService {
 
       return {
         id: conversation.id,
-        partner: partnerUser
+        partner: partnerProfile
           ? {
-              id: partnerUser._id.toString(),
-              username: partnerUser.username ?? '',
+              id: partnerProfile.id,
+              username: partnerProfile.username ?? '',
               displayName:
-                `${partnerUser.firstName ?? ''} ${partnerUser.lastName ?? ''}`.trim(),
+                `${partnerProfile.firstName ?? ''} ${partnerProfile.lastName ?? ''}`.trim(),
               avatarUrl: avatarUrls?.sm || null,
             }
           : {
