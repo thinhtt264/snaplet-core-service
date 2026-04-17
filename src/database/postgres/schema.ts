@@ -57,7 +57,7 @@ export const messages = pgTable(
     clientUuid: uuid('client_uuid').notNull(),
     type: messageTypeEnum('type').notNull().default('text'),
     content: text('content'),
-    replyToId: uuid('reply_to_id').references((): any => messages.id, {
+    replyToId: uuid('reply_to_id').references(() => messages.id, {
       onDelete: 'set null',
     }),
     pinnedAt: timestamp('pinned_at'),
