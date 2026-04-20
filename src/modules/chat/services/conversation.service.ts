@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -22,6 +23,8 @@ import {
   CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
   PARTNER_PROFILE_CACHE_TTL_SECONDS,
 } from '@common/constants/chat.constants';
+import { RelationshipService } from '@modules/relationships/services/relationship.service';
+import { RelationshipStatus } from '@modules/relationships/schemas/relationship.schema';
 
 interface CachedPartnerProfile {
   id: string;
@@ -42,6 +45,7 @@ export class ConversationService {
     private readonly userService: UserService,
     private readonly userRepository: UserRepository,
     private readonly cacheService: CacheService,
+    private readonly relationshipService: RelationshipService,
   ) {}
 
   async findOrCreateDirect(
@@ -57,8 +61,18 @@ export class ConversationService {
       throw new NotFoundException('Recipient user not found');
     }
 
+    const relationship = await this.relationshipService.getRelationshipWithUser(
+      userA,
+      userB,
+    );
+    if (relationship?.status !== RelationshipStatus.ACCEPTED) {
+      throw new ForbiddenException(
+        'You can only message users who are your friends',
+      );
+    }
+
     let existing: Awaited<
-      ReturnType<typeof this.conversationRepository.findDirectBetween>
+      ReturnType<ConversationRepository['findDirectBetween']>
     >;
     try {
       existing = await this.conversationRepository.findDirectBetween(
@@ -74,7 +88,7 @@ export class ConversationService {
       return { id: existing.id, isNew: false };
     }
 
-    let created: Awaited<ReturnType<typeof this.conversationRepository.create>>;
+    let created: Awaited<ReturnType<ConversationRepository['create']>>;
     try {
       created = await this.conversationRepository.create(userA, userB);
     } catch (err) {

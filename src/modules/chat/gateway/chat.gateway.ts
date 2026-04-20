@@ -8,13 +8,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import {
-  forwardRef,
-  Inject,
-  Injectable,
-  Logger,
-  UseGuards,
-} from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '@common/redis/redis.service';
@@ -30,9 +24,7 @@ import {
 import { TypingService } from '../services/typing.service';
 import { ReadReceiptService } from '../services/read-receipt.service';
 import { ConversationService } from '../services/conversation.service';
-import { ChatAccessGuard } from '../guards/chat-access.guard';
 
-@UseGuards(ChatAccessGuard)
 @Injectable()
 @WebSocketGateway({
   namespace: '/chat',
@@ -98,10 +90,18 @@ export class ChatGateway
   }
 
   @SubscribeMessage(CHAT_JOIN_CONVERSATION)
-  handleJoin(
+  async handleJoin(
     @ConnectedSocket() client: Socket & { userId: string },
     @MessageBody() payload: { conversationId: string },
-  ): void {
+  ): Promise<void> {
+    const isMember = await this.conversationService.isMember(
+      payload.conversationId,
+      client.userId,
+    );
+    if (!isMember) {
+      client.emit('error', { message: 'Not a member of this conversation' });
+      return;
+    }
     client.join(`conv:${payload.conversationId}`);
   }
 
@@ -118,6 +118,11 @@ export class ChatGateway
     @ConnectedSocket() client: Socket & { userId: string },
     @MessageBody() payload: { conversationId: string },
   ): Promise<void> {
+    const isMember = await this.conversationService.isMember(
+      payload.conversationId,
+      client.userId,
+    );
+    if (!isMember) return;
     await this.typingService.start(payload.conversationId, client.userId);
   }
 
@@ -134,6 +139,11 @@ export class ChatGateway
     @ConnectedSocket() client: Socket & { userId: string },
     @MessageBody() payload: { conversationId: string; messageId: string },
   ): Promise<void> {
+    const isMember = await this.conversationService.isMember(
+      payload.conversationId,
+      client.userId,
+    );
+    if (!isMember) return;
     await this.readReceiptService.markRead(
       payload.conversationId,
       client.userId,

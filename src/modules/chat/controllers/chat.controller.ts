@@ -28,10 +28,9 @@ import {
   PaginatedMessages,
 } from '../interfaces/message.response';
 import { CHAT_MESSAGE_PAGE_SIZE } from '@common/constants/chat.constants';
-import { ChatAccessGuard } from '../guards/chat-access.guard';
 
 @Controller('conversations')
-@UseGuards(JwtAuthGuard, ChatAccessGuard)
+@UseGuards(JwtAuthGuard)
 export class ChatController {
   constructor(
     private readonly conversationService: ConversationService,
@@ -92,9 +91,10 @@ export class ChatController {
   @HttpCode(HttpStatus.OK)
   async deleteMessage(
     @CurrentUserId() userId: string,
+    @Param('convId', ParseUUIDPipe) convId: string,
     @Param('messageId') messageId: string,
   ): Promise<void> {
-    return this.messageService.softDelete(messageId, userId);
+    return this.messageService.softDelete(convId, messageId, userId);
   }
 
   @Post(':convId/messages/:messageId/pin')

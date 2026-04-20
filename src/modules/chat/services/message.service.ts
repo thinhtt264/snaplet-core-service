@@ -41,6 +41,14 @@ export class MessageService {
     dto: SendMessageDto,
     senderId: string,
   ): Promise<MessageResponse> {
+    const isMember = await this.conversationService.isMember(
+      conversationId,
+      senderId,
+    );
+    if (!isMember) {
+      throw new ForbiddenException('Not a member of this conversation');
+    }
+
     const message = await this.messageRepository.insertMessage({
       ...dto,
       conversationId,
@@ -97,8 +105,19 @@ export class MessageService {
     return this.messageRepository.findByConversation(convId, cursor, limit);
   }
 
-  async softDelete(messageId: string, requesterId: string): Promise<void> {
-    // Fetch message to get conversationId before deletion
+  async softDelete(
+    convId: string,
+    messageId: string,
+    requesterId: string,
+  ): Promise<void> {
+    const isMember = await this.conversationService.isMember(
+      convId,
+      requesterId,
+    );
+    if (!isMember) {
+      throw new ForbiddenException('Not a member of this conversation');
+    }
+
     const message = await this.messageRepository.findById(messageId);
     if (!message) {
       throw new NotFoundException('Message not found');
@@ -106,9 +125,7 @@ export class MessageService {
 
     await this.messageRepository.softDelete(messageId, requesterId);
 
-    this.gateway.broadcastToRoom(message.conversationId, CHAT_MESSAGE_DELETED, {
-      messageId,
-    });
+    this.gateway.broadcastToRoom(convId, CHAT_MESSAGE_DELETED, { messageId });
   }
 
   async pinMessage(

@@ -1,6 +1,6 @@
 import { IsMongoId } from 'class-validator';
 
 export class CreateConversationDto {
-  @IsMongoId()
+  @IsMongoId({ message: 'Invalid recipientId' })
   recipientId: string;
 }

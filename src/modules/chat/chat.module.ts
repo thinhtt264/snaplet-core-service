@@ -14,7 +14,6 @@ import { UnreadCountService } from './services/unread-count.service';
 import { ConversationRepository } from './repositories/conversation.repository';
 import { MessageRepository } from './repositories/message.repository';
 import { ChatArchiveProcessor } from './processors/chat-archive.processor';
-import { ChatAccessGuard } from './guards/chat-access.guard';
 
 @Module({
   imports: [
@@ -35,7 +34,6 @@ import { ChatAccessGuard } from './guards/chat-access.guard';
     ConversationRepository,
     MessageRepository,
     ChatArchiveProcessor,
-    ChatAccessGuard,
   ],
   exports: [ConversationService, MessageService],
 })
