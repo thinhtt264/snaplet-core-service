@@ -33,7 +33,7 @@ export class ReadReceiptService {
           sql`(
             ${schema.conversationMembers.lastReadMessageId} IS NULL
             OR (
-              SELECT created_at FROM messages WHERE id = ${messageId}
+              SELECT created_at FROM messages WHERE id = ${messageId} AND conversation_id = ${convId}
             ) > (
               SELECT created_at FROM messages WHERE id = ${schema.conversationMembers.lastReadMessageId}
             )

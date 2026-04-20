@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConversationRepository } from '../repositories/conversation.repository';
 import { UnreadCountService } from './unread-count.service';
 import { UserService } from '@modules/users/services/user.service';
@@ -43,6 +48,15 @@ export class ConversationService {
     userA: string,
     userB: string,
   ): Promise<{ id: string; isNew: boolean }> {
+    if (userA === userB) {
+      throw new BadRequestException('Cannot create conversation with yourself');
+    }
+
+    const recipient = await this.userRepository.findActiveById(userB);
+    if (!recipient) {
+      throw new NotFoundException('Recipient user not found');
+    }
+
     let existing: Awaited<
       ReturnType<typeof this.conversationRepository.findDirectBetween>
     >;

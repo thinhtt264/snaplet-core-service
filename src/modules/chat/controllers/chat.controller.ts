@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
@@ -66,7 +67,7 @@ export class ChatController {
   @Get(':convId/messages')
   async getMessages(
     @CurrentUserId() userId: string,
-    @Param('convId') convId: string,
+    @Param('convId', ParseUUIDPipe) convId: string,
     @Query() query: LoadMessagesDto,
   ): Promise<PaginatedMessages> {
     return this.messageService.loadMessages(
@@ -81,7 +82,7 @@ export class ChatController {
   @HttpCode(HttpStatus.CREATED)
   async sendMessage(
     @CurrentUserId() userId: string,
-    @Param('convId') convId: string,
+    @Param('convId', ParseUUIDPipe) convId: string,
     @Body() dto: SendMessageDto,
   ): Promise<MessageResponse> {
     return this.messageService.send(convId, dto, userId);
@@ -100,7 +101,7 @@ export class ChatController {
   @HttpCode(HttpStatus.OK)
   async pinMessage(
     @CurrentUserId() userId: string,
-    @Param('convId') convId: string,
+    @Param('convId', ParseUUIDPipe) convId: string,
     @Param('messageId') messageId: string,
   ): Promise<void> {
     return this.messageService.pinMessage(convId, messageId, userId);
@@ -110,7 +111,7 @@ export class ChatController {
   @HttpCode(HttpStatus.OK)
   async unpinMessage(
     @CurrentUserId() userId: string,
-    @Param('convId') convId: string,
+    @Param('convId', ParseUUIDPipe) convId: string,
     @Param('messageId') messageId: string,
   ): Promise<void> {
     return this.messageService.unpinMessage(convId, messageId, userId);
@@ -119,7 +120,7 @@ export class ChatController {
   @Get(':convId/pinned')
   async getPinnedMessages(
     @CurrentUserId() userId: string,
-    @Param('convId') convId: string,
+    @Param('convId', ParseUUIDPipe) convId: string,
   ): Promise<MessageResponse[]> {
     return this.messageService.getPinnedMessages(convId, userId);
   }
