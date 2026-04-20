@@ -29,6 +29,7 @@ import {
 } from '../events/chat-socket-events';
 import { TypingService } from '../services/typing.service';
 import { ReadReceiptService } from '../services/read-receipt.service';
+import { ConversationService } from '../services/conversation.service';
 import { ChatAccessGuard } from '../guards/chat-access.guard';
 
 @UseGuards(ChatAccessGuard)
@@ -51,6 +52,7 @@ export class ChatGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
+    private readonly conversationService: ConversationService,
     @Inject(forwardRef(() => TypingService))
     private readonly typingService: TypingService,
     @Inject(forwardRef(() => ReadReceiptService))
@@ -61,7 +63,7 @@ export class ChatGateway
     this.server.use(this.createAuthMiddleware());
   }
 
-  handleConnection(client: Socket & { userId?: string }): void {
+  async handleConnection(client: Socket & { userId?: string }): Promise<void> {
     if (!client.userId) {
       client.disconnect();
       return;
@@ -71,6 +73,18 @@ export class ChatGateway
       | string
       | undefined;
     if (conversationId) {
+      // isMember dùng Redis cache nên reconnect liên tục không tốn DB query
+      const isMember = await this.conversationService.isMember(
+        conversationId,
+        client.userId,
+      );
+      if (!isMember) {
+        client.emit('error', {
+          message: 'Forbidden: not a member of this conversation',
+        });
+        client.disconnect();
+        return;
+      }
       void client.join(`conv:${conversationId}`);
     }
 

@@ -101,7 +101,6 @@ export class ConversationService {
         return !!member;
       },
       CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
-CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
     );
   }
 
@@ -255,18 +254,18 @@ CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
     );
   }
 
-  private decodeCursor(cursor: string): {
-    lastMessageAt: Date | null;
-    id: string;
-  } {
+  private decodeCursor(
+    cursor: string,
+  ): { lastMessageAt: Date | null; id: string } | undefined {
     try {
       const [ts, id] = Buffer.from(cursor, 'base64').toString().split('_');
+      if (!id) return undefined;
       return {
         lastMessageAt: ts === 'null' ? null : new Date(Number(ts)),
         id,
       };
     } catch {
-      return { lastMessageAt: null, id: '' };
+      return undefined;
     }
   }
 }
