@@ -101,7 +101,7 @@ export class ConversationService {
         return !!member;
       },
       CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
-      { shouldCache: (value) => value === true },
+CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
     );
   }
 
