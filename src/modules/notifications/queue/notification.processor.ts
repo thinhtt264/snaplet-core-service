@@ -110,7 +110,6 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       token: fcmToken,
       title: `${reactorDisplayName} reacted to your post`,
       body: reactionIcon,
-      includeNotification: data.type !== NotificationType.WIDGET_REFRESH,
       data: this.buildNotificationData(data.type, {
         postId: String(postId),
         actorAvatarUrl: actorAvatarUrl ?? '',
@@ -147,7 +146,6 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       token: fcmToken,
       title: '',
       body: '',
-      includeNotification: false,
       data: this.buildNotificationData(data.type, {
         postId: '',
         actorAvatarUrl: '',
