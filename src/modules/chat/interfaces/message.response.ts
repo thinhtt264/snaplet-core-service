@@ -24,8 +24,8 @@ export interface MessageResponse {
     isDeleted: boolean;
   } | null;
   attachments: AttachmentResponse[];
-  pinnedAt: string | null;
-  createdAt: string;
+  pinnedAt: Date | null;
+  createdAt: Date;
 }
 
 export type PaginatedMessages = CursorPage<MessageResponse>;

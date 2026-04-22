@@ -84,21 +84,18 @@ export class MessageRepository {
     );
   }
 
-  async softDelete(messageId: string, requesterId: string): Promise<void> {
+  async hardDelete(messageId: string, requesterId: string): Promise<void> {
     const rows = await this.db
-      .update(schema.messages)
-      .set({ deletedAt: new Date() })
+      .delete(schema.messages)
       .where(
         and(
           eq(schema.messages.id, messageId),
           eq(schema.messages.senderId, requesterId),
-          isNull(schema.messages.deletedAt),
         ),
       )
       .returning({ id: schema.messages.id });
 
     if (!rows.length) {
-      // Could be not found or not the sender — treat as forbidden
       throw new ForbiddenException('Cannot delete this message');
     }
   }
@@ -380,8 +377,8 @@ export class MessageRepository {
         width: a.width,
         height: a.height,
       })) as AttachmentResponse[],
-      pinnedAt: message.pinnedAt?.toISOString() ?? null,
-      createdAt: message.createdAt.toISOString(),
+      pinnedAt: message.pinnedAt ?? null,
+      createdAt: message.createdAt,
     };
   }
 }

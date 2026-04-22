@@ -10,7 +10,6 @@ import { ConversationService } from './services/conversation.service';
 import { MessageService } from './services/message.service';
 import { TypingService } from './services/typing.service';
 import { ReadReceiptService } from './services/read-receipt.service';
-import { UnreadCountService } from './services/unread-count.service';
 import { ConversationRepository } from './repositories/conversation.repository';
 import { MessageRepository } from './repositories/message.repository';
 import { ChatArchiveProcessor } from './processors/chat-archive.processor';
@@ -30,7 +29,6 @@ import { ChatArchiveProcessor } from './processors/chat-archive.processor';
     MessageService,
     TypingService,
     ReadReceiptService,
-    UnreadCountService,
     ConversationRepository,
     MessageRepository,
     ChatArchiveProcessor,

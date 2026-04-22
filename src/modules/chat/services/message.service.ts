@@ -6,14 +6,12 @@ import {
 import { MessageRepository } from '../repositories/message.repository';
 import { ConversationService } from './conversation.service';
 import { ChatGateway } from '../gateway/chat.gateway';
-import { SocketService } from '@modules/socket/socket.service';
 import { SendMessageDto } from '../dto/send-message.dto';
 import {
   MessageResponse,
   PaginatedMessages,
 } from '../interfaces/message.response';
 import {
-  CHAT_CONVERSATION_UPDATED,
   CHAT_MESSAGE_DELETED,
   CHAT_MESSAGE_NEW,
   CHAT_MESSAGE_PINNED,
@@ -32,7 +30,6 @@ export class MessageService {
     private readonly messageRepository: MessageRepository,
     private readonly conversationService: ConversationService,
     private readonly gateway: ChatGateway,
-    private readonly socketService: SocketService,
     private readonly cacheService: CacheService,
   ) {}
 
@@ -79,14 +76,10 @@ export class MessageService {
 
     this.gateway.broadcastToRoom(conversationId, CHAT_MESSAGE_NEW, message);
 
-    const memberIds =
-      await this.conversationService.getMemberUserIds(conversationId);
-    for (const memberId of memberIds) {
-      this.socketService.emitToUser(memberId, CHAT_CONVERSATION_UPDATED, {
-        conversationId,
-        lastMessage: message,
-      });
-    }
+    void this.gateway.notifyConversationUpdated(conversationId, senderId, {
+      conversationId,
+      lastMessage: message,
+    });
 
     return message;
   }
@@ -105,7 +98,7 @@ export class MessageService {
     return this.messageRepository.findByConversation(convId, cursor, limit);
   }
 
-  async softDelete(
+  async hardDeleteMessage(
     convId: string,
     messageId: string,
     requesterId: string,
@@ -123,7 +116,7 @@ export class MessageService {
       throw new NotFoundException('Message not found');
     }
 
-    await this.messageRepository.softDelete(messageId, requesterId);
+    await this.messageRepository.hardDelete(messageId, requesterId);
 
     this.gateway.broadcastToRoom(convId, CHAT_MESSAGE_DELETED, { messageId });
   }

@@ -12,9 +12,9 @@ export interface ConversationResponse {
   id: string;
   partner: PartnerInfo;
   lastMessage: MessageResponse | null;
-  hasUnread: boolean;
-  lastMessageAt: string | null;
-  createdAt: string;
+  partnerLastReadAt: Date | null;
+  myLastReadAt: Date | null;
+  createdAt: Date;
 }
 
 export type PaginatedConversations = CursorPage<ConversationResponse>;

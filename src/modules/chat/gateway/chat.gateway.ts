@@ -15,15 +15,20 @@ import { RedisService } from '@common/redis/redis.service';
 import { authActiveSessionKey } from '@common/utils';
 import type { ActiveAuthSession } from '@modules/auth/interfaces/active-auth-session.interface';
 import {
+  CHAT_CONVERSATION_UPDATED,
   CHAT_JOIN_CONVERSATION,
   CHAT_LEAVE_CONVERSATION,
   CHAT_MARK_READ,
   CHAT_TYPING_START,
   CHAT_TYPING_STOP,
+  type ChatConversationUpdatedPayload,
+  type ChatMarkReadPayload,
+  type ChatServerEvent,
 } from '../events/chat-socket-events';
 import { TypingService } from '../services/typing.service';
 import { ReadReceiptService } from '../services/read-receipt.service';
 import { ConversationService } from '../services/conversation.service';
+import { SocketService } from '@modules/socket/socket.service';
 
 @Injectable()
 @WebSocketGateway({
@@ -45,6 +50,7 @@ export class ChatGateway
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
     private readonly conversationService: ConversationService,
+    private readonly socketService: SocketService,
     @Inject(forwardRef(() => TypingService))
     private readonly typingService: TypingService,
     @Inject(forwardRef(() => ReadReceiptService))
@@ -137,7 +143,7 @@ export class ChatGateway
   @SubscribeMessage(CHAT_MARK_READ)
   async handleMarkRead(
     @ConnectedSocket() client: Socket & { userId: string },
-    @MessageBody() payload: { conversationId: string; messageId: string },
+    @MessageBody() payload: ChatMarkReadPayload,
   ): Promise<void> {
     const isMember = await this.conversationService.isMember(
       payload.conversationId,
@@ -148,11 +154,45 @@ export class ChatGateway
       payload.conversationId,
       client.userId,
       payload.messageId,
+      client.id,
     );
   }
 
-  broadcastToRoom(convId: string, event: string, payload: unknown): void {
-    this.server.to(`conv:${convId}`).emit(event, payload);
+  async notifyConversationUpdated(
+    convId: string,
+    actorId: string,
+    payload: ChatConversationUpdatedPayload,
+    actorPayload?: ChatConversationUpdatedPayload,
+  ): Promise<void> {
+    const memberIds = await this.conversationService.getMemberUserIds(convId);
+    for (const memberId of memberIds) {
+      if (memberId === actorId) {
+        if (actorPayload) {
+          this.socketService.emitToUser(
+            memberId,
+            CHAT_CONVERSATION_UPDATED,
+            actorPayload,
+          );
+        }
+        continue;
+      }
+      this.socketService.emitToUser(
+        memberId,
+        CHAT_CONVERSATION_UPDATED,
+        payload,
+      );
+    }
+  }
+
+  broadcastToRoom(
+    convId: string,
+    event: ChatServerEvent,
+    payload: unknown,
+    excludeSocketId?: string,
+  ): void {
+    const room = this.server.to(`conv:${convId}`);
+    const target = excludeSocketId ? room.except(excludeSocketId) : room;
+    target.emit(event, payload);
   }
 
   private createAuthMiddleware() {

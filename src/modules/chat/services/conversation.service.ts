@@ -6,7 +6,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConversationRepository } from '../repositories/conversation.repository';
-import { UnreadCountService } from './unread-count.service';
 import { UserService } from '@modules/users/services/user.service';
 import { UserRepository } from '@modules/users/repositories/user.repository';
 import {
@@ -41,7 +40,6 @@ export class ConversationService {
   constructor(
     private readonly conversationRepository: ConversationRepository,
     private readonly messageRepository: MessageRepository,
-    private readonly unreadCountService: UnreadCountService,
     private readonly userService: UserService,
     private readonly userRepository: UserRepository,
     private readonly cacheService: CacheService,
@@ -169,10 +167,14 @@ export class ConversationService {
     );
     const uniquePartnerIds = [...new Set(partnerIdMap.values())];
 
-    // Resolve partner profiles, last messages, and unread flags in parallel.
+    // Resolve partner profiles, last messages, and partner read timestamps in parallel.
     // mgetOrCompute issues a single MGET + single pipeline MSET per group,
     // with one batched DB call for all misses.
-    const [partnerMap, lastMessageMap, hasUnreadMap] = await Promise.all([
+    const [
+      partnerMap,
+      lastMessageMap,
+      { myLastReadAtMap, partnerLastReadAtMap },
+    ] = await Promise.all([
       // Partner profiles: MGET → batch MongoDB fetch for misses → pipeline MSET.
       this.cacheService.mgetOrCompute<CachedPartnerProfile>(
         REDIS_KEY_FEATURES.CHAT_PARTNER_PROFILE,
@@ -204,12 +206,8 @@ export class ConversationService {
         CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
       ),
 
-      this.unreadCountService.getHasUnreadBatch(convIds, userId),
+      this.conversationRepository.getBothReadAtBatch(convIds, userId),
     ]);
-
-    this.logger.debug(
-      `[getConversationList] hasUnreadMap size=${hasUnreadMap.size}, lastMessageMap size=${lastMessageMap.size}`,
-    );
 
     const data = page.map((row) => {
       const { conversation } = row;
@@ -222,7 +220,9 @@ export class ConversationService {
           })
         : null;
 
-      const hasUnread = hasUnreadMap.get(conversation.id) ?? false;
+      const partnerLastReadAt =
+        partnerLastReadAtMap.get(conversation.id) ?? null;
+      const myLastReadAt = myLastReadAtMap.get(conversation.id) ?? null;
       const lastMessage = conversation.lastMessageAt
         ? (lastMessageMap.get(conversation.id) ?? null)
         : null;
@@ -244,9 +244,9 @@ export class ConversationService {
               avatarUrl: null,
             },
         lastMessage,
-        hasUnread,
-        lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
-        createdAt: conversation.createdAt.toISOString(),
+        partnerLastReadAt,
+        myLastReadAt,
+        createdAt: conversation.createdAt,
       } satisfies ConversationResponse;
     });
 

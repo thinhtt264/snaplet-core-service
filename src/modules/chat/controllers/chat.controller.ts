@@ -94,7 +94,7 @@ export class ChatController {
     @Param('convId', ParseUUIDPipe) convId: string,
     @Param('messageId') messageId: string,
   ): Promise<void> {
-    return this.messageService.softDelete(convId, messageId, userId);
+    return this.messageService.hardDeleteMessage(convId, messageId, userId);
   }
 
   @Post(':convId/messages/:messageId/pin')

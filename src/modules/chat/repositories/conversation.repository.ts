@@ -147,6 +147,44 @@ export class ConversationRepository {
     return rows[0]?.userId ?? null;
   }
 
+  async getBothReadAtBatch(
+    convIds: string[],
+    userId: string,
+  ): Promise<{
+    myLastReadAtMap: Map<string, Date | null>;
+    partnerLastReadAtMap: Map<string, Date | null>;
+  }> {
+    if (!convIds.length) {
+      return { myLastReadAtMap: new Map(), partnerLastReadAtMap: new Map() };
+    }
+
+    const rows = await this.db
+      .select({
+        conversationId: schema.conversationMembers.conversationId,
+        memberId: schema.conversationMembers.userId,
+        lastReadCreatedAt: schema.messages.createdAt,
+      })
+      .from(schema.conversationMembers)
+      .leftJoin(
+        schema.messages,
+        eq(schema.messages.id, schema.conversationMembers.lastReadMessageId),
+      )
+      .where(inArray(schema.conversationMembers.conversationId, convIds));
+
+    const myLastReadAtMap = new Map<string, Date | null>();
+    const partnerLastReadAtMap = new Map<string, Date | null>();
+
+    for (const r of rows) {
+      if (r.memberId === userId) {
+        myLastReadAtMap.set(r.conversationId, r.lastReadCreatedAt ?? null);
+      } else {
+        partnerLastReadAtMap.set(r.conversationId, r.lastReadCreatedAt ?? null);
+      }
+    }
+
+    return { myLastReadAtMap, partnerLastReadAtMap };
+  }
+
   async getPartnerUserIdsBatch(
     convIds: string[],
     userId: string,
