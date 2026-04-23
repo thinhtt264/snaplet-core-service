@@ -8,9 +8,6 @@ import {
   ChatMessageReadEventPayload,
 } from '../events/chat-socket-events';
 import { ChatGateway } from '../gateway/chat.gateway';
-import { CacheService } from '@modules/cache/cache.service';
-import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
-import { MessageResponse } from '../interfaces/message.response';
 
 type DrizzleClient = PostgresJsDatabase<typeof schema>;
 
@@ -20,7 +17,6 @@ export class ReadReceiptService {
     @Inject(DRIZZLE_CLIENT) private readonly db: DrizzleClient,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
-    private readonly cacheService: CacheService,
   ) {}
 
   async markRead(
@@ -79,18 +75,6 @@ export class ReadReceiptService {
         readAt,
       } as ChatMessageReadEventPayload,
       socketId,
-    );
-
-    const lastMessage = await this.cacheService.get<MessageResponse>(
-      REDIS_KEY_FEATURES.CHAT_CONV_LAST_MESSAGE,
-      convId,
-    );
-
-    void this.gateway.notifyConversationUpdated(
-      convId,
-      userId,
-      { conversationId: convId, lastMessage, partnerLastReadAt: readAt },
-      { conversationId: convId, lastMessage, myLastReadAt: readAt },
     );
   }
 }

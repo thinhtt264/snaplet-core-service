@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+# Agent Rules
+
+## Clarification
+- Never guess when there is a concern — ask immediately and wait for confirmation before proceeding
+- If the source differs from the plan or requirements → describe the difference and ask, do not decide unilaterally
+- Do not assume behavior of code that has not been read
+
+## Reading Source
+- Only read files directly related to the current task — do not scan the entire codebase
+- Always read before writing any code
+- If a required file cannot be found → ask, do not guess the path
+
+## Reuse & Convention
+- Prefer reusing existing components, utilities, and patterns in the codebase
+- Do not create new abstractions if an equivalent already exists
+- Respect existing naming conventions — if reality differs from the plan, follow reality
+- Do not change existing behavior unless explicitly instructed
+
 ## Commands
 
 **Package manager:** pnpm

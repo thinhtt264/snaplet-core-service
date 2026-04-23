@@ -15,16 +15,16 @@ import { RedisService } from '@common/redis/redis.service';
 import { authActiveSessionKey } from '@common/utils';
 import type { ActiveAuthSession } from '@modules/auth/interfaces/active-auth-session.interface';
 import {
-  CHAT_CONVERSATION_UPDATED,
   CHAT_JOIN_CONVERSATION,
   CHAT_LEAVE_CONVERSATION,
-  CHAT_MARK_READ,
   CHAT_TYPING_START,
   CHAT_TYPING_STOP,
-  type ChatConversationUpdatedPayload,
-  type ChatMarkReadPayload,
   type ChatServerEvent,
 } from '../events/chat-socket-events';
+import {
+  CONVERSATION_UPDATED,
+  ConversationUpdatedPayload,
+} from '@modules/socket/events/socket-events';
 import { TypingService } from '../services/typing.service';
 import { ReadReceiptService } from '../services/read-receipt.service';
 import { ConversationService } from '../services/conversation.service';
@@ -140,47 +140,20 @@ export class ChatGateway
     await this.typingService.stop(payload.conversationId, client.userId);
   }
 
-  @SubscribeMessage(CHAT_MARK_READ)
-  async handleMarkRead(
-    @ConnectedSocket() client: Socket & { userId: string },
-    @MessageBody() payload: ChatMarkReadPayload,
-  ): Promise<void> {
-    const isMember = await this.conversationService.isMember(
-      payload.conversationId,
-      client.userId,
-    );
-    if (!isMember) return;
-    await this.readReceiptService.markRead(
-      payload.conversationId,
-      client.userId,
-      payload.messageId,
-      client.id,
-    );
-  }
-
   async notifyConversationUpdated(
     convId: string,
-    actorId: string,
-    payload: ChatConversationUpdatedPayload,
-    actorPayload?: ChatConversationUpdatedPayload,
+    senderId: string,
+    lastMessageAt: Date,
   ): Promise<void> {
     const memberIds = await this.conversationService.getMemberUserIds(convId);
+    const payload: ConversationUpdatedPayload = {
+      conversationId: convId,
+      lastMessageAt,
+      lastMessageSenderId: senderId,
+    };
     for (const memberId of memberIds) {
-      if (memberId === actorId) {
-        if (actorPayload) {
-          this.socketService.emitToUser(
-            memberId,
-            CHAT_CONVERSATION_UPDATED,
-            actorPayload,
-          );
-        }
-        continue;
-      }
-      this.socketService.emitToUser(
-        memberId,
-        CHAT_CONVERSATION_UPDATED,
-        payload,
-      );
+      if (memberId === senderId) continue;
+      this.socketService.emitToUser(memberId, CONVERSATION_UPDATED, payload);
     }
   }
 

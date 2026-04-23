@@ -23,12 +23,14 @@ import {
 } from '@common/constants/chat.constants';
 import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
+import { ReadReceiptService } from './read-receipt.service';
 
 @Injectable()
 export class MessageService {
   constructor(
     private readonly messageRepository: MessageRepository,
     private readonly conversationService: ConversationService,
+    private readonly readReceiptService: ReadReceiptService,
     private readonly gateway: ChatGateway,
     private readonly cacheService: CacheService,
   ) {}
@@ -76,12 +78,24 @@ export class MessageService {
 
     this.gateway.broadcastToRoom(conversationId, CHAT_MESSAGE_NEW, message);
 
-    void this.gateway.notifyConversationUpdated(conversationId, senderId, {
+    void this.gateway.notifyConversationUpdated(
       conversationId,
-      lastMessage: message,
-    });
+      senderId,
+      new Date(message.createdAt),
+    );
 
     return message;
+  }
+
+  async markMessageSeen(
+    convId: string,
+    messageId: string,
+    userId: string,
+  ): Promise<void> {
+    const isMember = await this.conversationService.isMember(convId, userId);
+    if (!isMember)
+      throw new ForbiddenException('Not a member of this conversation');
+    await this.readReceiptService.markRead(convId, userId, messageId);
   }
 
   async loadMessages(

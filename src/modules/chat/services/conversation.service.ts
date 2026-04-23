@@ -24,6 +24,8 @@ import {
 } from '@common/constants/chat.constants';
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { RelationshipStatus } from '@modules/relationships/schemas/relationship.schema';
+import { SocketService } from '@modules/socket/socket.service';
+import { CONVERSATION_DELETED } from '@modules/socket/events/socket-events';
 
 interface CachedPartnerProfile {
   id: string;
@@ -44,6 +46,7 @@ export class ConversationService {
     private readonly userRepository: UserRepository,
     private readonly cacheService: CacheService,
     private readonly relationshipService: RelationshipService,
+    private readonly socketService: SocketService,
   ) {}
 
   async findOrCreateDirect(
@@ -129,6 +132,13 @@ export class ConversationService {
     const memberUserIds =
       await this.conversationRepository.getMemberUserIds(convId);
 
+    // Emit before delete so we still have the member list
+    for (const userId of memberUserIds) {
+      this.socketService.emitToUser(userId, CONVERSATION_DELETED, {
+        conversationId: convId,
+      });
+    }
+
     await this.conversationRepository.delete(convId);
 
     await Promise.all(
@@ -146,8 +156,6 @@ export class ConversationService {
     cursor?: string,
     limit: number = 20,
   ): Promise<PaginatedConversations> {
-    this.logger.debug(`[getConversationList] userId=${userId}`);
-
     const parsed = cursor ? this.decodeCursor(cursor) : undefined;
     const rows = await this.conversationRepository.findAllByUserId(
       userId,
@@ -162,20 +170,13 @@ export class ConversationService {
 
     const partnerIdMap =
       await this.conversationRepository.getPartnerUserIdsBatch(convIds, userId);
-    this.logger.debug(
-      `[getConversationList] partnerIdMap size=${partnerIdMap.size}`,
-    );
     const uniquePartnerIds = [...new Set(partnerIdMap.values())];
 
-    // Resolve partner profiles, last messages, and partner read timestamps in parallel.
-    // mgetOrCompute issues a single MGET + single pipeline MSET per group,
-    // with one batched DB call for all misses.
     const [
       partnerMap,
       lastMessageMap,
       { myLastReadAtMap, partnerLastReadAtMap },
     ] = await Promise.all([
-      // Partner profiles: MGET → batch MongoDB fetch for misses → pipeline MSET.
       this.cacheService.mgetOrCompute<CachedPartnerProfile>(
         REDIS_KEY_FEATURES.CHAT_PARTNER_PROFILE,
         uniquePartnerIds,
@@ -197,7 +198,6 @@ export class ConversationService {
         PARTNER_PROFILE_CACHE_TTL_SECONDS,
       ),
 
-      // Last messages: MGET → batch DB fetch for misses → pipeline MSET.
       this.cacheService.mgetOrCompute<MessageResponse>(
         REDIS_KEY_FEATURES.CHAT_CONV_LAST_MESSAGE,
         convIds,
@@ -213,41 +213,21 @@ export class ConversationService {
       const { conversation } = row;
       const partnerId = partnerIdMap.get(conversation.id) ?? null;
       const partnerProfile = partnerId ? partnerMap.get(partnerId) : null;
-
-      const avatarUrls = partnerProfile?.avatarKey
-        ? this.userService.getAvatarUrlsForKey(partnerProfile.avatarKey, {
-            sizes: [ImageSizeKey.SM],
-          })
-        : null;
-
+      const myLastReadAt = myLastReadAtMap.get(conversation.id) ?? null;
       const partnerLastReadAt =
         partnerLastReadAtMap.get(conversation.id) ?? null;
-      const myLastReadAt = myLastReadAtMap.get(conversation.id) ?? null;
       const lastMessage = conversation.lastMessageAt
         ? (lastMessageMap.get(conversation.id) ?? null)
         : null;
 
-      return {
-        id: conversation.id,
-        partner: partnerProfile
-          ? {
-              id: partnerProfile.id,
-              username: partnerProfile.username ?? '',
-              displayName:
-                `${partnerProfile.firstName ?? ''} ${partnerProfile.lastName ?? ''}`.trim(),
-              avatarUrl: avatarUrls?.sm || null,
-            }
-          : {
-              id: partnerId ?? '',
-              username: '',
-              displayName: '',
-              avatarUrl: null,
-            },
+      return this.mapToConversationResponse(
+        conversation,
+        partnerId,
+        partnerProfile ?? null,
         lastMessage,
-        partnerLastReadAt,
         myLastReadAt,
-        createdAt: conversation.createdAt,
-      } satisfies ConversationResponse;
+        partnerLastReadAt,
+      );
     });
 
     const last = page[page.length - 1];
@@ -260,6 +240,128 @@ export class ConversationService {
         : null;
 
     return { data, pagination: { limit, nextCursor } };
+  }
+
+  async getConversationById(
+    convId: string,
+    userId: string,
+  ): Promise<ConversationResponse> {
+    const memberIds = await this.getMemberUserIds(convId);
+    if (!memberIds.includes(userId)) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    const partnerId = memberIds.find((id) => id !== userId) ?? null;
+    const partnerIds = partnerId ? [partnerId] : [];
+
+    const conversation = await this.conversationRepository.findById(convId);
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    const [
+      partnerMap,
+      lastMessageMap,
+      { myLastReadAtMap, partnerLastReadAtMap },
+    ] = await Promise.all([
+      this.cacheService.mgetOrCompute<CachedPartnerProfile>(
+        REDIS_KEY_FEATURES.CHAT_PARTNER_PROFILE,
+        partnerIds,
+        async (missIds) => {
+          const users = await this.userRepository.findManyByIds(missIds);
+          return new Map(
+            users.map((u) => [
+              u._id.toString(),
+              {
+                id: u._id.toString(),
+                username: u.username ?? null,
+                firstName: u.firstName ?? null,
+                lastName: u.lastName ?? null,
+                avatarKey: u.avatarKey ?? null,
+              },
+            ]),
+          );
+        },
+        PARTNER_PROFILE_CACHE_TTL_SECONDS,
+      ),
+      this.cacheService.mgetOrCompute<MessageResponse>(
+        REDIS_KEY_FEATURES.CHAT_CONV_LAST_MESSAGE,
+        [convId],
+        (missConvIds) =>
+          this.messageRepository.findLastMessagesBatch(missConvIds),
+        CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
+      ),
+      this.conversationRepository.getBothReadAtBatch([convId], userId),
+    ]);
+
+    const partnerProfile = partnerId
+      ? (partnerMap.get(partnerId) ?? null)
+      : null;
+    const myLastReadAt = myLastReadAtMap.get(convId) ?? null;
+    const partnerLastReadAt = partnerLastReadAtMap.get(convId) ?? null;
+    const lastMessage = conversation.lastMessageAt
+      ? (lastMessageMap.get(convId) ?? null)
+      : null;
+
+    return this.mapToConversationResponse(
+      conversation,
+      partnerId,
+      partnerProfile,
+      lastMessage,
+      myLastReadAt,
+      partnerLastReadAt,
+    );
+  }
+
+  private mapToConversationResponse(
+    conversation: { id: string; createdAt: Date; lastMessageAt: Date | null },
+    partnerId: string | null,
+    partnerProfile: CachedPartnerProfile | null,
+    lastMessage: MessageResponse | null,
+    myLastReadAt: Date | null,
+    partnerLastReadAt: Date | null,
+  ): ConversationResponse {
+    const avatarUrls = partnerProfile?.avatarKey
+      ? this.userService.getAvatarUrlsForKey(partnerProfile.avatarKey, {
+          sizes: [ImageSizeKey.SM],
+        })
+      : null;
+
+    const myLastSeenAt = myLastReadAt?.getTime() ?? null;
+    const partnerLastSeenAt = partnerLastReadAt?.getTime() ?? null;
+
+    const candidates = [
+      conversation.lastMessageAt?.getTime() ?? null,
+      myLastSeenAt,
+      partnerLastSeenAt,
+    ].filter((t): t is number => t !== null);
+    const updatedAt =
+      candidates.length > 0
+        ? Math.max(...candidates)
+        : conversation.createdAt.getTime();
+
+    return {
+      id: conversation.id,
+      partner: partnerProfile
+        ? {
+            id: partnerProfile.id,
+            username: partnerProfile.username ?? '',
+            displayName:
+              `${partnerProfile.firstName ?? ''} ${partnerProfile.lastName ?? ''}`.trim(),
+            avatarUrl: avatarUrls?.sm || null,
+          }
+        : {
+            id: partnerId ?? '',
+            username: '',
+            displayName: '',
+            avatarUrl: null,
+          },
+      lastMessage,
+      myLastSeenAt,
+      partnerLastSeenAt,
+      updatedAt: new Date(updatedAt),
+      createdAt: conversation.createdAt,
+    };
   }
 
   private encodeCursor(lastMessageAt: Date | null, id: string): string {

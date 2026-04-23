@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -61,6 +62,24 @@ export class ChatController {
       query.cursor,
       query.limit,
     );
+  }
+
+  @Get(':convId')
+  async getConversation(
+    @CurrentUserId() userId: string,
+    @Param('convId', ParseUUIDPipe) convId: string,
+  ): Promise<ConversationResponse> {
+    return this.conversationService.getConversationById(convId, userId);
+  }
+
+  @Patch(':convId/messages/:messageId/seen')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async markMessageSeen(
+    @CurrentUserId() userId: string,
+    @Param('convId', ParseUUIDPipe) convId: string,
+    @Param('messageId') messageId: string,
+  ): Promise<void> {
+    return this.messageService.markMessageSeen(convId, messageId, userId);
   }
 
   @Get(':convId/messages')

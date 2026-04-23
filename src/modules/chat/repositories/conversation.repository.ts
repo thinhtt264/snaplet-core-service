@@ -206,4 +206,47 @@ export class ConversationRepository {
       rows.map((r): [string, string] => [r.conversationId, r.partnerId]),
     );
   }
+
+  async markSeen(
+    convId: string,
+    userId: string,
+    messageId: string,
+  ): Promise<boolean> {
+    // Validate message exists in this conversation (not deleted)
+    const msgRows = await this.db
+      .select({ id: schema.messages.id })
+      .from(schema.messages)
+      .where(
+        and(
+          eq(schema.messages.id, messageId),
+          eq(schema.messages.conversationId, convId),
+          isNull(schema.messages.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (!msgRows.length) return false;
+
+    // Only advance lastReadMessageId if the new message is newer than the current one.
+    const updated = await this.db
+      .update(schema.conversationMembers)
+      .set({ lastReadMessageId: messageId })
+      .where(
+        and(
+          eq(schema.conversationMembers.conversationId, convId),
+          eq(schema.conversationMembers.userId, userId),
+          sql`(
+            ${schema.conversationMembers.lastReadMessageId} IS NULL
+            OR (
+              SELECT created_at FROM messages WHERE id = ${messageId} AND conversation_id = ${convId}
+            ) > (
+              SELECT created_at FROM messages WHERE id = ${schema.conversationMembers.lastReadMessageId}
+            )
+          )`,
+        ),
+      )
+      .returning({ conversationId: schema.conversationMembers.conversationId });
+
+    return updated.length > 0;
+  }
 }
