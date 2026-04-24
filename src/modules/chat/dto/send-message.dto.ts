@@ -1,27 +1,34 @@
 import {
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   MaxLength,
-  ValidateNested,
+  ValidateIf,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
-export enum MessageType {
-  TEXT = 'text',
-  IMAGE = 'image',
-  STICKER = 'sticker',
-  GIF = 'gif',
-}
+export class SendMessageDto {
+  @IsUUID()
+  clientUuid: string;
 
-export class AttachmentDto {
+  @IsOptional()
   @IsString()
-  mediaKey: string;
+  @MaxLength(2000)
+  text?: string;
 
+  @IsOptional()
   @IsString()
-  mimeType: string;
+  mediaKey?: string;
+
+  @IsOptional()
+  @IsUrl()
+  mediaUrl?: string;
+
+  // Required when mediaKey or mediaUrl is present
+  @ValidateIf((o) => o.mediaKey != null || o.mediaUrl != null)
+  @IsString()
+  mimeType?: string;
 
   @IsOptional()
   @IsInt()
@@ -30,26 +37,8 @@ export class AttachmentDto {
   @IsOptional()
   @IsInt()
   height?: number;
-}
-
-export class SendMessageDto {
-  @IsUUID()
-  clientUuid: string;
-
-  @IsEnum(MessageType)
-  type: MessageType;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  content?: string;
 
   @IsOptional()
   @IsUUID()
   replyToId?: string;
-
-  @IsOptional()
-  @ValidateNested({ each: true })
-  @Type(() => AttachmentDto)
-  attachments?: AttachmentDto[];
 }

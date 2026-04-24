@@ -26,6 +26,7 @@ export interface ConversationSeenPayload {
 export interface ConversationUpdatedPayload {
   conversationId: string;
   lastMessageAt: Date;
+  lastMessageText: string;
   lastMessageSenderId: string;
 }
 

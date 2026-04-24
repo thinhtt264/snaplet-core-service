@@ -21,10 +21,6 @@ import {
   CHAT_TYPING_STOP,
   type ChatServerEvent,
 } from '../events/chat-socket-events';
-import {
-  CONVERSATION_UPDATED,
-  ConversationUpdatedPayload,
-} from '@modules/socket/events/socket-events';
 import { TypingService } from '../services/typing.service';
 import { ReadReceiptService } from '../services/read-receipt.service';
 import { ConversationService } from '../services/conversation.service';
@@ -138,23 +134,6 @@ export class ChatGateway
     @MessageBody() payload: { conversationId: string },
   ): Promise<void> {
     await this.typingService.stop(payload.conversationId, client.userId);
-  }
-
-  async notifyConversationUpdated(
-    convId: string,
-    senderId: string,
-    lastMessageAt: Date,
-  ): Promise<void> {
-    const memberIds = await this.conversationService.getMemberUserIds(convId);
-    const payload: ConversationUpdatedPayload = {
-      conversationId: convId,
-      lastMessageAt,
-      lastMessageSenderId: senderId,
-    };
-    for (const memberId of memberIds) {
-      if (memberId === senderId) continue;
-      this.socketService.emitToUser(memberId, CONVERSATION_UPDATED, payload);
-    }
   }
 
   broadcastToRoom(

@@ -1,29 +1,21 @@
 import { CursorPage } from '@common/types';
-import { MessageType } from '../dto/send-message.dto';
-
-export interface AttachmentResponse {
-  id: string;
-  mediaKey: string;
-  mimeType: string;
-  width: number | null;
-  height: number | null;
-}
+import { ImageSizesResponse } from '@common/types/image-sizes.types';
 
 export interface MessageResponse {
   id: string;
   conversationId: string;
   senderId: string;
   clientUuid: string;
-  type: MessageType;
-  content: string | null;
+  text: string | null;
+  mediaUrls: ImageSizesResponse | null;
+  mimeType: string | null;
   isDeleted: boolean;
   replyTo: {
     id: string;
     senderId: string;
-    content: string | null;
+    text: string | null;
     isDeleted: boolean;
   } | null;
-  attachments: AttachmentResponse[];
   pinnedAt: Date | null;
   createdAt: Date;
 }

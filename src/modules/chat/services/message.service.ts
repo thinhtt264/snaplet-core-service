@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -40,6 +41,12 @@ export class MessageService {
     dto: SendMessageDto,
     senderId: string,
   ): Promise<MessageResponse> {
+    if (dto.text == null && dto.mediaKey == null && dto.mediaUrl == null) {
+      throw new BadRequestException(
+        'Message must have at least text, mediaKey, or mediaUrl',
+      );
+    }
+
     const isMember = await this.conversationService.isMember(
       conversationId,
       senderId,
@@ -53,13 +60,6 @@ export class MessageService {
       conversationId,
       senderId,
     });
-
-    if (dto.attachments?.length) {
-      await this.messageRepository.insertAttachments(
-        message.id,
-        dto.attachments,
-      );
-    }
 
     await Promise.all([
       this.conversationService.updateLastMessageAt(
@@ -78,9 +78,10 @@ export class MessageService {
 
     this.gateway.broadcastToRoom(conversationId, CHAT_MESSAGE_NEW, message);
 
-    void this.gateway.notifyConversationUpdated(
+    void this.conversationService.notifyConversationUpdated(
       conversationId,
       senderId,
+      message.text ?? '',
       new Date(message.createdAt),
     );
 

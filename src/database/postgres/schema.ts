@@ -5,18 +5,10 @@ import {
   timestamp,
   integer,
   primaryKey,
-  pgEnum,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-
-export const messageTypeEnum = pgEnum('message_type', [
-  'text',
-  'image',
-  'sticker',
-  'gif',
-]);
 
 export const conversations = pgTable('conversations', {
   id: uuid('id')
@@ -55,8 +47,12 @@ export const messages = pgTable(
     // text: stores MongoDB ObjectId string directly
     senderId: text('sender_id').notNull(),
     clientUuid: uuid('client_uuid').notNull(),
-    type: messageTypeEnum('type').notNull().default('text'),
-    content: text('content'),
+    text: text('text'),
+    mediaKey: text('media_key'),
+    mediaUrl: text('media_url'),
+    mimeType: text('mime_type'),
+    width: integer('width'),
+    height: integer('height'),
     replyToId: uuid('reply_to_id').references(() => messages.id, {
       onDelete: 'set null',
     }),
@@ -78,19 +74,6 @@ export const messages = pgTable(
 export const conversationMembersRelations = {
   lastReadMessageId: conversationMembers.lastReadMessageId,
 };
-
-export const messageAttachments = pgTable('message_attachments', {
-  id: uuid('id')
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  messageId: uuid('message_id')
-    .notNull()
-    .references(() => messages.id, { onDelete: 'cascade' }),
-  mediaKey: text('media_key').notNull(),
-  mimeType: text('mime_type').notNull(),
-  width: integer('width'),
-  height: integer('height'),
-});
 
 export const pinnedMessages = pgTable(
   'pinned_messages',

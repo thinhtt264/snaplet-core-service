@@ -13,13 +13,10 @@ import {
   parseChatCursor,
 } from '@common/types/chat-cursor.types';
 import { CHAT_MESSAGE_PAGE_SIZE } from '@common/constants/chat.constants';
+import { ImageSizeKey } from '@common/types';
+import { StorageService } from '@infrastructure/storage/storage.service';
+import { SendMessageDto } from '../dto/send-message.dto';
 import {
-  AttachmentDto,
-  MessageType,
-  SendMessageDto,
-} from '../dto/send-message.dto';
-import {
-  AttachmentResponse,
   MessageResponse,
   PaginatedMessages,
 } from '../interfaces/message.response';
@@ -28,28 +25,46 @@ type DrizzleClient = PostgresJsDatabase<typeof schema>;
 
 @Injectable()
 export class MessageRepository {
-  constructor(@Inject(DRIZZLE_CLIENT) private readonly db: DrizzleClient) {}
+  constructor(
+    @Inject(DRIZZLE_CLIENT) private readonly db: DrizzleClient,
+    private readonly storageService: StorageService,
+  ) {}
 
   async insertMessage(
     dto: SendMessageDto & { conversationId: string; senderId: string },
   ): Promise<MessageResponse> {
-    // ON CONFLICT (client_uuid) DO NOTHING RETURNING *
-    // If conflict (offline retry): query by client_uuid and return existing row
+    const {
+      conversationId,
+      senderId,
+      clientUuid,
+      text = null,
+      mediaKey = null,
+      mediaUrl = null,
+      mimeType = null,
+      width = null,
+      height = null,
+      replyToId = null,
+    } = dto;
+
     const inserted = await this.db
       .insert(schema.messages)
       .values({
-        conversationId: dto.conversationId,
-        senderId: dto.senderId,
-        clientUuid: dto.clientUuid,
-        type: dto.type as 'text' | 'image' | 'sticker' | 'gif',
-        content: dto.content ?? null,
-        replyToId: dto.replyToId ?? null,
+        conversationId,
+        senderId,
+        clientUuid,
+        text,
+        mediaKey,
+        mediaUrl,
+        mimeType,
+        width,
+        height,
+        replyToId,
       })
       .onConflictDoNothing()
       .returning();
 
     if (inserted.length > 0) {
-      return this.toMessageResponse(inserted[0], null, []);
+      return this.toMessageResponse(inserted[0], null);
     }
 
     // Conflict: offline retry — return existing row
@@ -63,25 +78,7 @@ export class MessageRepository {
       throw new NotFoundException('Message not found after conflict');
     }
 
-    const attachments = await this.db
-      .select()
-      .from(schema.messageAttachments)
-      .where(eq(schema.messageAttachments.messageId, existing[0].id));
-
-    return this.toMessageResponse(existing[0], null, attachments);
-  }
-
-  async insertAttachments(messageId: string, attachments: AttachmentDto[]) {
-    if (!attachments.length) return;
-    await this.db.insert(schema.messageAttachments).values(
-      attachments.map((a) => ({
-        messageId,
-        mediaKey: a.mediaKey,
-        mimeType: a.mimeType,
-        width: a.width ?? null,
-        height: a.height ?? null,
-      })),
-    );
+    return this.toMessageResponse(existing[0], null);
   }
 
   async hardDelete(messageId: string, requesterId: string): Promise<void> {
@@ -122,46 +119,18 @@ export class MessageRepository {
     );
 
     const rows = await this.db
-      .select({
-        message: schema.messages,
-        attachment: schema.messageAttachments,
-      })
+      .select()
       .from(schema.messages)
-      .leftJoin(
-        schema.messageAttachments,
-        eq(schema.messageAttachments.messageId, schema.messages.id),
-      )
       .where(whereClause)
       .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
       .limit(limit + 1);
 
-    // Group attachments per message
-    const messageMap = new Map<
-      string,
-      {
-        message: (typeof rows)[0]['message'];
-        attachments: (typeof rows)[0]['attachment'][];
-      }
-    >();
-    for (const row of rows) {
-      if (!messageMap.has(row.message.id)) {
-        messageMap.set(row.message.id, {
-          message: row.message,
-          attachments: [],
-        });
-      }
-      if (row.attachment) {
-        messageMap.get(row.message.id)!.attachments.push(row.attachment);
-      }
-    }
-
-    const unique = [...messageMap.values()];
-    const hasMore = unique.length > limit;
-    const page = hasMore ? unique.slice(0, limit) : unique;
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
 
     // Fetch reply previews for messages that have replyToId
     const replyIds = [
-      ...new Set(page.map((m) => m.message.replyToId).filter(Boolean)),
+      ...new Set(page.map((m) => m.replyToId).filter(Boolean)),
     ] as string[];
     const replyMap = new Map<string, typeof schema.messages.$inferSelect>();
     if (replyIds.length > 0) {
@@ -174,25 +143,19 @@ export class MessageRepository {
       }
     }
 
-    const data = page.map(({ message, attachments }) => {
+    const data = page.map((message) => {
       const reply = message.replyToId
         ? (replyMap.get(message.replyToId) ?? null)
         : null;
-      return this.toMessageResponse(
-        message,
-        reply,
-        attachments.filter(
-          Boolean,
-        ) as (typeof schema.messageAttachments.$inferSelect)[],
-      );
+      return this.toMessageResponse(message, reply);
     });
 
     const lastRow = page[page.length - 1];
     const nextCursor =
       hasMore && lastRow
         ? encodeChatCursor({
-            createdAt: lastRow.message.createdAt,
-            id: lastRow.message.id,
+            createdAt: lastRow.createdAt,
+            id: lastRow.id,
           })
         : null;
 
@@ -233,50 +196,16 @@ export class MessageRepository {
 
   async findPinned(convId: string): Promise<MessageResponse[]> {
     const rows = await this.db
-      .select({
-        message: schema.messages,
-        attachment: schema.messageAttachments,
-      })
+      .select({ message: schema.messages })
       .from(schema.pinnedMessages)
       .innerJoin(
         schema.messages,
         eq(schema.pinnedMessages.messageId, schema.messages.id),
       )
-      .leftJoin(
-        schema.messageAttachments,
-        eq(schema.messageAttachments.messageId, schema.messages.id),
-      )
       .where(eq(schema.pinnedMessages.conversationId, convId))
       .orderBy(asc(schema.pinnedMessages.pinnedAt));
 
-    const messageMap = new Map<
-      string,
-      {
-        message: (typeof rows)[0]['message'];
-        attachments: (typeof rows)[0]['attachment'][];
-      }
-    >();
-    for (const row of rows) {
-      if (!messageMap.has(row.message.id)) {
-        messageMap.set(row.message.id, {
-          message: row.message,
-          attachments: [],
-        });
-      }
-      if (row.attachment) {
-        messageMap.get(row.message.id)!.attachments.push(row.attachment);
-      }
-    }
-
-    return [...messageMap.values()].map(({ message, attachments }) =>
-      this.toMessageResponse(
-        message,
-        null,
-        attachments.filter(
-          Boolean,
-        ) as (typeof schema.messageAttachments.$inferSelect)[],
-      ),
-    );
+    return rows.map(({ message }) => this.toMessageResponse(message, null));
   }
 
   async findLastMessagesBatch(
@@ -284,8 +213,6 @@ export class MessageRepository {
   ): Promise<Map<string, MessageResponse>> {
     if (!convIds.length) return new Map();
 
-    // DISTINCT ON (conversation_id) with ORDER BY conversation_id, created_at DESC, id DESC
-    // → one row per conversation: the latest non-deleted message.
     const lastMessages = await this.db
       .selectDistinctOn([schema.messages.conversationId])
       .from(schema.messages)
@@ -301,33 +228,9 @@ export class MessageRepository {
         desc(schema.messages.id),
       );
 
-    if (!lastMessages.length) return new Map();
-
-    const messageIds = lastMessages.map((m) => m.id);
-
-    // Batch-fetch attachments for all last messages in one query.
-    const attachmentRows = await this.db
-      .select()
-      .from(schema.messageAttachments)
-      .where(inArray(schema.messageAttachments.messageId, messageIds));
-
-    const attachmentMap = new Map<
-      string,
-      (typeof schema.messageAttachments.$inferSelect)[]
-    >();
-    for (const att of attachmentRows) {
-      const list = attachmentMap.get(att.messageId) ?? [];
-      list.push(att);
-      attachmentMap.set(att.messageId, list);
-    }
-
     const result = new Map<string, MessageResponse>();
     for (const message of lastMessages) {
-      const attachments = attachmentMap.get(message.id) ?? [];
-      result.set(
-        message.conversationId,
-        this.toMessageResponse(message, null, attachments),
-      );
+      result.set(message.conversationId, this.toMessageResponse(message, null));
     }
     return result;
   }
@@ -341,42 +244,49 @@ export class MessageRepository {
 
     if (!rows.length) return null;
 
-    const attachments = await this.db
-      .select()
-      .from(schema.messageAttachments)
-      .where(eq(schema.messageAttachments.messageId, messageId));
-
-    return this.toMessageResponse(rows[0], null, attachments);
+    return this.toMessageResponse(rows[0], null);
   }
 
   private toMessageResponse(
     message: typeof schema.messages.$inferSelect,
     reply: typeof schema.messages.$inferSelect | null,
-    attachments: (typeof schema.messageAttachments.$inferSelect)[],
   ): MessageResponse {
+    const isDeleted = !!message.deletedAt;
+    const mediaKey = isDeleted ? null : message.mediaKey;
+
+    let mediaUrls: MessageResponse['mediaUrls'] = null;
+    if (mediaKey) {
+      const original = this.storageService.getDefaultImageUrl(mediaKey);
+      const urls = this.storageService.getImageUrls(mediaKey, [
+        ImageSizeKey.XS,
+        ImageSizeKey.SM,
+      ]);
+      mediaUrls = {
+        original,
+        xs: urls?.[ImageSizeKey.XS] ?? '',
+        sm: urls?.[ImageSizeKey.SM] ?? '',
+        md: '',
+        xl: '',
+      };
+    }
+
     return {
       id: message.id,
       conversationId: message.conversationId,
       senderId: message.senderId,
       clientUuid: message.clientUuid,
-      type: message.type as MessageType,
-      content: message.deletedAt ? null : message.content,
-      isDeleted: !!message.deletedAt,
+      text: isDeleted ? null : message.text,
+      mediaUrls,
+      mimeType: isDeleted ? null : message.mimeType,
+      isDeleted,
       replyTo: reply
         ? {
             id: reply.id,
             senderId: reply.senderId,
-            content: reply.deletedAt ? null : reply.content,
+            text: reply.deletedAt ? null : reply.text,
             isDeleted: !!reply.deletedAt,
           }
         : null,
-      attachments: attachments.map((a) => ({
-        id: a.id,
-        mediaKey: a.mediaKey,
-        mimeType: a.mimeType,
-        width: a.width,
-        height: a.height,
-      })) as AttachmentResponse[],
       pinnedAt: message.pinnedAt ?? null,
       createdAt: message.createdAt,
     };

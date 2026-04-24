@@ -25,7 +25,11 @@ import {
 import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { RelationshipStatus } from '@modules/relationships/schemas/relationship.schema';
 import { SocketService } from '@modules/socket/socket.service';
-import { CONVERSATION_DELETED } from '@modules/socket/events/socket-events';
+import {
+  CONVERSATION_DELETED,
+  CONVERSATION_UPDATED,
+  ConversationUpdatedPayload,
+} from '@modules/socket/events/socket-events';
 
 interface CachedPartnerProfile {
   id: string;
@@ -48,6 +52,25 @@ export class ConversationService {
     private readonly relationshipService: RelationshipService,
     private readonly socketService: SocketService,
   ) {}
+
+  async notifyConversationUpdated(
+    convId: string,
+    senderId: string,
+    lastMessageText: string,
+    lastMessageAt: Date,
+  ): Promise<void> {
+    const memberIds = await this.getMemberUserIds(convId);
+    const payload: ConversationUpdatedPayload = {
+      conversationId: convId,
+      lastMessageText,
+      lastMessageAt,
+      lastMessageSenderId: senderId,
+    };
+    for (const memberId of memberIds) {
+      if (memberId === senderId) continue;
+      this.socketService.emitToUser(memberId, CONVERSATION_UPDATED, payload);
+    }
+  }
 
   async findOrCreateDirect(
     userA: string,
