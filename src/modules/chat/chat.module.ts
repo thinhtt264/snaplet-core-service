@@ -6,6 +6,7 @@ import { CommonJwtModule } from '@common/jwt/jwt.module';
 import { SocketModule } from '@modules/socket/socket.module';
 import { StorageModule } from '@infrastructure/storage/storage.module';
 import { ChatController } from './controllers/chat.controller';
+import { MessageController } from './controllers/message.controller';
 import { ChatGateway } from './gateway/chat.gateway';
 import { ConversationService } from './services/conversation.service';
 import { MessageService } from './services/message.service';
@@ -24,7 +25,7 @@ import { ChatArchiveProcessor } from './processors/chat-archive.processor';
     SocketModule,
     StorageModule,
   ],
-  controllers: [ChatController],
+  controllers: [ChatController, MessageController],
   providers: [
     ChatGateway,
     ConversationService,

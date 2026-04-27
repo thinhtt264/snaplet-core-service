@@ -15,11 +15,23 @@ import {
 import { CHAT_MESSAGE_PAGE_SIZE } from '@common/constants/chat.constants';
 import { ImageSizeKey } from '@common/types';
 import { StorageService } from '@infrastructure/storage/storage.service';
-import { SendMessageDto } from '../dto/send-message.dto';
 import {
   MessageResponse,
   PaginatedMessages,
 } from '../interfaces/message.response';
+
+interface InsertMessageParams {
+  conversationId: string;
+  senderId: string;
+  clientUuid: string;
+  text?: string | null;
+  mediaKey?: string | null;
+  mediaUrl?: string | null;
+  mimeType?: string | null;
+  width?: number | null;
+  height?: number | null;
+  replyToId?: string | null;
+}
 
 type DrizzleClient = PostgresJsDatabase<typeof schema>;
 
@@ -30,9 +42,7 @@ export class MessageRepository {
     private readonly storageService: StorageService,
   ) {}
 
-  async insertMessage(
-    dto: SendMessageDto & { conversationId: string; senderId: string },
-  ): Promise<MessageResponse> {
+  async insertMessage(params: InsertMessageParams): Promise<MessageResponse> {
     const {
       conversationId,
       senderId,
@@ -44,7 +54,7 @@ export class MessageRepository {
       width = null,
       height = null,
       replyToId = null,
-    } = dto;
+    } = params;
 
     const inserted = await this.db
       .insert(schema.messages)
@@ -71,7 +81,7 @@ export class MessageRepository {
     const existing = await this.db
       .select()
       .from(schema.messages)
-      .where(eq(schema.messages.clientUuid, dto.clientUuid))
+      .where(eq(schema.messages.clientUuid, params.clientUuid))
       .limit(1);
 
     if (!existing.length) {

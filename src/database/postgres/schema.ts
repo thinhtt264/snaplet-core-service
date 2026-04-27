@@ -4,34 +4,30 @@ import {
   text,
   timestamp,
   integer,
-  primaryKey,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-export const conversations = pgTable('conversations', {
-  id: uuid('id')
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  lastMessageAt: timestamp('last_message_at'),
-});
-
-export const conversationMembers = pgTable(
-  'conversation_members',
+export const conversations = pgTable(
+  'conversations',
   {
-    conversationId: uuid('conversation_id')
-      .notNull()
-      .references(() => conversations.id, { onDelete: 'cascade' }),
-    // text: stores MongoDB ObjectId string directly
-    userId: text('user_id').notNull(),
-    lastReadMessageId: uuid('last_read_message_id'),
-    joinedAt: timestamp('joined_at').defaultNow().notNull(),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    // userA < userB (lexicographic sort) — enforces pair uniqueness
+    userA: text('user_a').notNull(),
+    userB: text('user_b').notNull(),
+    // No FK to messages to avoid circular reference; enforced at app level
+    userALastReadMsgId: uuid('user_a_last_read_msg_id'),
+    userBLastReadMsgId: uuid('user_b_last_read_msg_id'),
+    lastMessageAt: timestamp('last_message_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.conversationId, t.userId] }),
-    index('idx_conv_members_user').on(t.userId),
+    uniqueIndex('idx_conv_pair').on(t.userA, t.userB),
+    index('idx_conv_user_a').on(t.userA),
+    index('idx_conv_user_b').on(t.userB),
   ],
 );
 
@@ -69,12 +65,6 @@ export const messages = pgTable(
   ],
 );
 
-// FK from conversationMembers.lastReadMessageId → messages.id (set null on delete)
-// Defined after messages table to avoid forward reference issue
-export const conversationMembersRelations = {
-  lastReadMessageId: conversationMembers.lastReadMessageId,
-};
-
 export const pinnedMessages = pgTable(
   'pinned_messages',
   {
@@ -87,10 +77,7 @@ export const pinnedMessages = pgTable(
     pinnedBy: text('pinned_by').notNull(),
     pinnedAt: timestamp('pinned_at').defaultNow().notNull(),
   },
-  (t) => [
-    primaryKey({ columns: [t.conversationId, t.messageId] }),
-    index('idx_pinned_conv').on(t.conversationId),
-  ],
+  (t) => [index('idx_pinned_conv').on(t.conversationId)],
 );
 
 export const archiveRefs = pgTable('archive_refs', {

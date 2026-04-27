@@ -1,5 +1,6 @@
 import {
   IsInt,
+  IsMongoId,
   IsOptional,
   IsString,
   IsUrl,
@@ -11,6 +12,9 @@ import {
 export class SendMessageDto {
   @IsUUID()
   clientUuid: string;
+
+  @IsMongoId()
+  recipientId: string;
 
   @IsOptional()
   @IsString()

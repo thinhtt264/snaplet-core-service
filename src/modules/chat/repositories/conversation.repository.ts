@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import { intersect } from 'drizzle-orm/pg-core';
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
 import * as schema from '@database/postgres/schema';
@@ -20,37 +19,43 @@ export class ConversationRepository {
     return rows[0] ?? null;
   }
 
-  async findDirectBetween(userA: string, userB: string) {
-    // Find a conversation that both users are members of
-    const memberA = this.db
-      .select({ conversationId: schema.conversationMembers.conversationId })
-      .from(schema.conversationMembers)
-      .where(eq(schema.conversationMembers.userId, userA));
-
-    const memberB = this.db
-      .select({ conversationId: schema.conversationMembers.conversationId })
-      .from(schema.conversationMembers)
-      .where(eq(schema.conversationMembers.userId, userB));
-
-    const rows = await intersect(memberA, memberB).limit(1);
-
-    if (!rows.length) return null;
-
-    return this.findById(rows[0].conversationId);
+  async findByPair(userA: string, userB: string) {
+    const [lo, hi] = [userA, userB].sort();
+    const rows = await this.db
+      .select()
+      .from(schema.conversations)
+      .where(
+        and(
+          eq(schema.conversations.userA, lo),
+          eq(schema.conversations.userB, hi),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
   }
 
-  async create(userA: string, userB: string) {
-    const [conversation] = await this.db
+  /** Atomically find-or-create. Returns { conversation, isNew }. */
+  async findOrCreate(
+    userA: string,
+    userB: string,
+  ): Promise<{
+    conversation: typeof schema.conversations.$inferSelect;
+    isNew: boolean;
+  }> {
+    const [lo, hi] = [userA, userB].sort();
+
+    const inserted = await this.db
       .insert(schema.conversations)
-      .values({})
+      .values({ userA: lo, userB: hi })
+      .onConflictDoNothing()
       .returning();
 
-    await this.db.insert(schema.conversationMembers).values([
-      { conversationId: conversation.id, userId: userA },
-      { conversationId: conversation.id, userId: userB },
-    ]);
+    if (inserted.length > 0) {
+      return { conversation: inserted[0], isNew: true };
+    }
 
-    return conversation;
+    const existing = await this.findByPair(lo, hi);
+    return { conversation: existing!, isNew: false };
   }
 
   async updateLastMessageAt(convId: string, timestamp: Date) {
@@ -65,9 +70,11 @@ export class ConversationRepository {
     cursor?: { lastMessageAt: Date | null; id: string },
     limit: number = 20,
   ) {
-    // Keyset pagination on (lastMessageAt DESC NULLS LAST, id DESC).
-    // NULL lastMessageAt rows sort last, so when cursor is null we only page
-    // within the null bucket (same-null, smaller id).
+    const memberClause = or(
+      eq(schema.conversations.userA, userId),
+      eq(schema.conversations.userB, userId),
+    );
+
     const cursorClause = cursor
       ? cursor.lastMessageAt
         ? or(
@@ -83,68 +90,51 @@ export class ConversationRepository {
           )
       : undefined;
 
-    const rows = await this.db
-      .select({
-        conversation: schema.conversations,
-        member: schema.conversationMembers,
-      })
-      .from(schema.conversationMembers)
-      .innerJoin(
-        schema.conversations,
-        eq(schema.conversationMembers.conversationId, schema.conversations.id),
-      )
-      .where(and(eq(schema.conversationMembers.userId, userId), cursorClause))
+    return this.db
+      .select()
+      .from(schema.conversations)
+      .where(and(memberClause, cursorClause))
       .orderBy(
         sql`${schema.conversations.lastMessageAt} DESC NULLS LAST, ${schema.conversations.id} DESC`,
       )
       .limit(limit + 1);
-
-    return rows;
   }
 
-  async getMember(convId: string, userId: string) {
+  async isMember(convId: string, userId: string): Promise<boolean> {
     const rows = await this.db
-      .select()
-      .from(schema.conversationMembers)
+      .select({ id: schema.conversations.id })
+      .from(schema.conversations)
       .where(
         and(
-          eq(schema.conversationMembers.conversationId, convId),
-          eq(schema.conversationMembers.userId, userId),
+          eq(schema.conversations.id, convId),
+          or(
+            eq(schema.conversations.userA, userId),
+            eq(schema.conversations.userB, userId),
+          ),
         ),
       )
       .limit(1);
-    return rows[0] ?? null;
+    return rows.length > 0;
   }
 
   async getMemberUserIds(convId: string): Promise<string[]> {
-    const rows = await this.db
-      .select({ userId: schema.conversationMembers.userId })
-      .from(schema.conversationMembers)
-      .where(eq(schema.conversationMembers.conversationId, convId));
-    return rows.map((r) => r.userId);
-  }
-
-  async delete(convId: string): Promise<void> {
-    await this.db
-      .delete(schema.conversations)
-      .where(eq(schema.conversations.id, convId));
+    const conv = await this.findById(convId);
+    return conv ? [conv.userA, conv.userB] : [];
   }
 
   async getPartnerUserId(
     convId: string,
     userId: string,
   ): Promise<string | null> {
-    const rows = await this.db
-      .select({ userId: schema.conversationMembers.userId })
-      .from(schema.conversationMembers)
-      .where(
-        and(
-          eq(schema.conversationMembers.conversationId, convId),
-          sql`${schema.conversationMembers.userId} != ${userId}`,
-        ),
-      )
-      .limit(1);
-    return rows[0]?.userId ?? null;
+    const conv = await this.findById(convId);
+    if (!conv) return null;
+    return conv.userA === userId ? conv.userB : conv.userA;
+  }
+
+  async delete(convId: string): Promise<void> {
+    await this.db
+      .delete(schema.conversations)
+      .where(eq(schema.conversations.id, convId));
   }
 
   async getBothReadAtBatch(
@@ -158,95 +148,107 @@ export class ConversationRepository {
       return { myLastReadAtMap: new Map(), partnerLastReadAtMap: new Map() };
     }
 
-    const rows = await this.db
+    // Step 1: fetch last-read message IDs from conversations
+    const convRows = await this.db
       .select({
-        conversationId: schema.conversationMembers.conversationId,
-        memberId: schema.conversationMembers.userId,
-        lastReadCreatedAt: schema.messages.createdAt,
+        id: schema.conversations.id,
+        userA: schema.conversations.userA,
+        userALastReadMsgId: schema.conversations.userALastReadMsgId,
+        userBLastReadMsgId: schema.conversations.userBLastReadMsgId,
       })
-      .from(schema.conversationMembers)
-      .leftJoin(
-        schema.messages,
-        eq(schema.messages.id, schema.conversationMembers.lastReadMessageId),
-      )
-      .where(inArray(schema.conversationMembers.conversationId, convIds));
+      .from(schema.conversations)
+      .where(inArray(schema.conversations.id, convIds));
+
+    // Step 2: batch-fetch createdAt for all non-null lastReadMsgIds
+    const allMsgIds = [
+      ...convRows.map((r) => r.userALastReadMsgId),
+      ...convRows.map((r) => r.userBLastReadMsgId),
+    ].filter((id): id is string => id != null);
+
+    const msgTimestampMap = new Map<string, Date>();
+    if (allMsgIds.length > 0) {
+      const msgs = await this.db
+        .select({
+          id: schema.messages.id,
+          createdAt: schema.messages.createdAt,
+        })
+        .from(schema.messages)
+        .where(inArray(schema.messages.id, allMsgIds));
+      for (const m of msgs) {
+        msgTimestampMap.set(m.id, m.createdAt);
+      }
+    }
 
     const myLastReadAtMap = new Map<string, Date | null>();
     const partnerLastReadAtMap = new Map<string, Date | null>();
 
-    for (const r of rows) {
-      if (r.memberId === userId) {
-        myLastReadAtMap.set(r.conversationId, r.lastReadCreatedAt ?? null);
-      } else {
-        partnerLastReadAtMap.set(r.conversationId, r.lastReadCreatedAt ?? null);
-      }
+    for (const r of convRows) {
+      const isUserA = r.userA === userId;
+      const myMsgId = isUserA ? r.userALastReadMsgId : r.userBLastReadMsgId;
+      const partnerMsgId = isUserA
+        ? r.userBLastReadMsgId
+        : r.userALastReadMsgId;
+      myLastReadAtMap.set(
+        r.id,
+        myMsgId ? (msgTimestampMap.get(myMsgId) ?? null) : null,
+      );
+      partnerLastReadAtMap.set(
+        r.id,
+        partnerMsgId ? (msgTimestampMap.get(partnerMsgId) ?? null) : null,
+      );
     }
 
     return { myLastReadAtMap, partnerLastReadAtMap };
   }
 
-  async getPartnerUserIdsBatch(
-    convIds: string[],
-    userId: string,
-  ): Promise<Map<string, string>> {
-    if (!convIds.length) return new Map();
-    const rows = await this.db
-      .select({
-        conversationId: schema.conversationMembers.conversationId,
-        partnerId: schema.conversationMembers.userId,
-      })
-      .from(schema.conversationMembers)
-      .where(
-        and(
-          inArray(schema.conversationMembers.conversationId, convIds),
-          ne(schema.conversationMembers.userId, userId),
-        ),
-      );
-    return new Map(
-      rows.map((r): [string, string] => [r.conversationId, r.partnerId]),
-    );
-  }
-
-  async markSeen(
+  /**
+   * Advance a user's last-read pointer for a conversation.
+   * Only moves forward — ignores the update if messageId is older than current.
+   * Returns true if the pointer was actually advanced.
+   */
+  async advanceLastRead(
     convId: string,
     userId: string,
     messageId: string,
+    messageCreatedAt: Date,
   ): Promise<boolean> {
-    // Validate message exists in this conversation (not deleted)
-    const msgRows = await this.db
-      .select({ id: schema.messages.id })
-      .from(schema.messages)
+    const [conv] = await this.db
+      .select({ userA: schema.conversations.userA })
+      .from(schema.conversations)
       .where(
         and(
-          eq(schema.messages.id, messageId),
-          eq(schema.messages.conversationId, convId),
-          isNull(schema.messages.deletedAt),
+          eq(schema.conversations.id, convId),
+          or(
+            eq(schema.conversations.userA, userId),
+            eq(schema.conversations.userB, userId),
+          ),
         ),
       )
       .limit(1);
 
-    if (!msgRows.length) return false;
+    if (!conv) return false;
 
-    // Only advance lastReadMessageId if the new message is newer than the current one.
-    const updated = await this.db
-      .update(schema.conversationMembers)
-      .set({ lastReadMessageId: messageId })
-      .where(
-        and(
-          eq(schema.conversationMembers.conversationId, convId),
-          eq(schema.conversationMembers.userId, userId),
-          sql`(
-            ${schema.conversationMembers.lastReadMessageId} IS NULL
-            OR (
-              SELECT created_at FROM messages WHERE id = ${messageId} AND conversation_id = ${convId}
-            ) > (
-              SELECT created_at FROM messages WHERE id = ${schema.conversationMembers.lastReadMessageId}
-            )
-          )`,
-        ),
-      )
-      .returning({ conversationId: schema.conversationMembers.conversationId });
+    const isUserA = conv.userA === userId;
+    const updateData = isUserA
+      ? { userALastReadMsgId: messageId }
+      : { userBLastReadMsgId: messageId };
 
-    return updated.length > 0;
+    // Only advance if the new message is newer than the current last-read
+    const currentCol = isUserA
+      ? sql`user_a_last_read_msg_id`
+      : sql`user_b_last_read_msg_id`;
+
+    const orderingCheck = sql`(
+      ${currentCol} IS NULL
+      OR ${messageCreatedAt} > (SELECT created_at FROM messages WHERE id = ${currentCol})
+    )`;
+
+    const rows = await this.db
+      .update(schema.conversations)
+      .set(updateData)
+      .where(and(eq(schema.conversations.id, convId), orderingCheck))
+      .returning({ id: schema.conversations.id });
+
+    return rows.length > 0;
   }
 }

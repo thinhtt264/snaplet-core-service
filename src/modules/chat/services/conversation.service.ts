@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConversationRepository } from '../repositories/conversation.repository';
@@ -41,8 +40,6 @@ interface CachedPartnerProfile {
 
 @Injectable()
 export class ConversationService {
-  private readonly logger = new Logger(ConversationService.name);
-
   constructor(
     private readonly conversationRepository: ConversationRepository,
     private readonly messageRepository: MessageRepository,
@@ -95,32 +92,28 @@ export class ConversationService {
       );
     }
 
-    let existing: Awaited<
-      ReturnType<ConversationRepository['findDirectBetween']>
-    >;
-    try {
-      existing = await this.conversationRepository.findDirectBetween(
-        userA,
-        userB,
-      );
-    } catch (err) {
-      this.logger.error(`[findOrCreateDirect] findDirectBetween FAILED`, err);
-      throw err;
+    const { conversation, isNew } =
+      await this.conversationRepository.findOrCreate(userA, userB);
+
+    if (isNew) {
+      // Invalidate member cache so isMember picks up the new conversation
+      await Promise.all([
+        this.cacheService.invalidate(
+          REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
+          `${conversation.id}:${userA}`,
+        ),
+        this.cacheService.invalidate(
+          REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
+          `${conversation.id}:${userB}`,
+        ),
+        this.cacheService.invalidate(
+          REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
+          `${conversation.id}:members`,
+        ),
+      ]);
     }
 
-    if (existing) {
-      return { id: existing.id, isNew: false };
-    }
-
-    let created: Awaited<ReturnType<ConversationRepository['create']>>;
-    try {
-      created = await this.conversationRepository.create(userA, userB);
-    } catch (err) {
-      this.logger.error(`[findOrCreateDirect] create FAILED`, err);
-      throw err;
-    }
-
-    return { id: created.id, isNew: true };
+    return { id: conversation.id, isNew };
   }
 
   async updateLastMessageAt(convId: string, timestamp: Date): Promise<void> {
@@ -131,13 +124,7 @@ export class ConversationService {
     return this.cacheService.getOrCompute(
       REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
       `${convId}:${userId}`,
-      async () => {
-        const member = await this.conversationRepository.getMember(
-          convId,
-          userId,
-        );
-        return !!member;
-      },
+      () => this.conversationRepository.isMember(convId, userId),
       CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
     );
   }
@@ -155,7 +142,6 @@ export class ConversationService {
     const memberUserIds =
       await this.conversationRepository.getMemberUserIds(convId);
 
-    // Emit before delete so we still have the member list
     for (const userId of memberUserIds) {
       this.socketService.emitToUser(userId, CONVERSATION_DELETED, {
         conversationId: convId,
@@ -189,10 +175,15 @@ export class ConversationService {
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
 
-    const convIds = page.map((row) => row.conversation.id);
+    const convIds = page.map((conv) => conv.id);
 
-    const partnerIdMap =
-      await this.conversationRepository.getPartnerUserIdsBatch(convIds, userId);
+    // Partner IDs are embedded in the conversation rows — no extra batch query needed
+    const partnerIdMap = new Map(
+      page.map((conv) => [
+        conv.id,
+        conv.userA === userId ? conv.userB : conv.userA,
+      ]),
+    );
     const uniquePartnerIds = [...new Set(partnerIdMap.values())];
 
     const [
@@ -232,19 +223,17 @@ export class ConversationService {
       this.conversationRepository.getBothReadAtBatch(convIds, userId),
     ]);
 
-    const data = page.map((row) => {
-      const { conversation } = row;
-      const partnerId = partnerIdMap.get(conversation.id) ?? null;
+    const data = page.map((conv) => {
+      const partnerId = partnerIdMap.get(conv.id) ?? null;
       const partnerProfile = partnerId ? partnerMap.get(partnerId) : null;
-      const myLastReadAt = myLastReadAtMap.get(conversation.id) ?? null;
-      const partnerLastReadAt =
-        partnerLastReadAtMap.get(conversation.id) ?? null;
-      const lastMessage = conversation.lastMessageAt
-        ? (lastMessageMap.get(conversation.id) ?? null)
+      const myLastReadAt = myLastReadAtMap.get(conv.id) ?? null;
+      const partnerLastReadAt = partnerLastReadAtMap.get(conv.id) ?? null;
+      const lastMessage = conv.lastMessageAt
+        ? (lastMessageMap.get(conv.id) ?? null)
         : null;
 
       return this.mapToConversationResponse(
-        conversation,
+        conv,
         partnerId,
         partnerProfile ?? null,
         lastMessage,
@@ -255,12 +244,7 @@ export class ConversationService {
 
     const last = page[page.length - 1];
     const nextCursor =
-      hasMore && last
-        ? this.encodeCursor(
-            last.conversation.lastMessageAt,
-            last.conversation.id,
-          )
-        : null;
+      hasMore && last ? this.encodeCursor(last.lastMessageAt, last.id) : null;
 
     return { data, pagination: { limit, nextCursor } };
   }
@@ -269,18 +253,16 @@ export class ConversationService {
     convId: string,
     userId: string,
   ): Promise<ConversationResponse> {
-    const memberIds = await this.getMemberUserIds(convId);
-    if (!memberIds.includes(userId)) {
-      throw new NotFoundException('Conversation not found');
-    }
-
-    const partnerId = memberIds.find((id) => id !== userId) ?? null;
-    const partnerIds = partnerId ? [partnerId] : [];
-
     const conversation = await this.conversationRepository.findById(convId);
-    if (!conversation) {
+    if (
+      !conversation ||
+      (conversation.userA !== userId && conversation.userB !== userId)
+    ) {
       throw new NotFoundException('Conversation not found');
     }
+
+    const partnerId =
+      conversation.userA === userId ? conversation.userB : conversation.userA;
 
     const [
       partnerMap,
@@ -289,7 +271,7 @@ export class ConversationService {
     ] = await Promise.all([
       this.cacheService.mgetOrCompute<CachedPartnerProfile>(
         REDIS_KEY_FEATURES.CHAT_PARTNER_PROFILE,
-        partnerIds,
+        [partnerId],
         async (missIds) => {
           const users = await this.userRepository.findManyByIds(missIds);
           return new Map(
@@ -317,9 +299,7 @@ export class ConversationService {
       this.conversationRepository.getBothReadAtBatch([convId], userId),
     ]);
 
-    const partnerProfile = partnerId
-      ? (partnerMap.get(partnerId) ?? null)
-      : null;
+    const partnerProfile = partnerMap.get(partnerId) ?? null;
     const myLastReadAt = myLastReadAtMap.get(convId) ?? null;
     const partnerLastReadAt = partnerLastReadAtMap.get(convId) ?? null;
     const lastMessage = conversation.lastMessageAt

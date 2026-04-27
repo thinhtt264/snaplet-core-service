@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
@@ -16,9 +15,7 @@ import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { CurrentUserId } from '@common/decorators/current-user.decorator';
 import { ConversationService } from '../services/conversation.service';
 import { MessageService } from '../services/message.service';
-import { CreateConversationDto } from '../dto/create-conversation.dto';
 import { GetConversationsDto } from '../dto/get-conversations.dto';
-import { SendMessageDto } from '../dto/send-message.dto';
 import { LoadMessagesDto } from '../dto/load-messages.dto';
 import {
   ConversationResponse,
@@ -37,20 +34,6 @@ export class ChatController {
     private readonly conversationService: ConversationService,
     private readonly messageService: MessageService,
   ) {}
-
-  @Post()
-  async createConversation(
-    @CurrentUserId() userId: string,
-    @Body() dto: CreateConversationDto,
-  ): Promise<ConversationResponse & { isNew: boolean }> {
-    const { id, isNew } = await this.conversationService.findOrCreateDirect(
-      userId,
-      dto.recipientId,
-    );
-
-    // Return minimal shape with id + isNew; full list available via GET /conversations
-    return { id, isNew } as any;
-  }
 
   @Get()
   async getConversations(
@@ -94,16 +77,6 @@ export class ChatController {
       query.cursor,
       query.limit ?? CHAT_MESSAGE_PAGE_SIZE,
     );
-  }
-
-  @Post(':convId/messages')
-  @HttpCode(HttpStatus.CREATED)
-  async sendMessage(
-    @CurrentUserId() userId: string,
-    @Param('convId', ParseUUIDPipe) convId: string,
-    @Body() dto: SendMessageDto,
-  ): Promise<MessageResponse> {
-    return this.messageService.send(convId, dto, userId);
   }
 
   @Delete(':convId/messages/:messageId')

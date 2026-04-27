@@ -36,29 +36,30 @@ export class MessageService {
     private readonly cacheService: CacheService,
   ) {}
 
-  async send(
-    conversationId: string,
-    dto: SendMessageDto,
-    senderId: string,
-  ): Promise<MessageResponse> {
+  async send(dto: SendMessageDto, senderId: string): Promise<MessageResponse> {
     if (dto.text == null && dto.mediaKey == null && dto.mediaUrl == null) {
       throw new BadRequestException(
         'Message must have at least text, mediaKey, or mediaUrl',
       );
     }
 
-    const isMember = await this.conversationService.isMember(
-      conversationId,
-      senderId,
-    );
-    if (!isMember) {
-      throw new ForbiddenException('Not a member of this conversation');
-    }
+    const { id: conversationId } =
+      await this.conversationService.findOrCreateDirect(
+        senderId,
+        dto.recipientId,
+      );
 
     const message = await this.messageRepository.insertMessage({
-      ...dto,
       conversationId,
       senderId,
+      clientUuid: dto.clientUuid,
+      text: dto.text,
+      mediaKey: dto.mediaKey,
+      mediaUrl: dto.mediaUrl,
+      mimeType: dto.mimeType,
+      width: dto.width,
+      height: dto.height,
+      replyToId: dto.replyToId,
     });
 
     await Promise.all([
@@ -66,8 +67,6 @@ export class MessageService {
         conversationId,
         new Date(message.createdAt),
       ),
-      // Write-through: keep last-message cache in sync so the conversation list
-      // serves fresh data without a DB round-trip.
       this.cacheService.set(
         REDIS_KEY_FEATURES.CHAT_CONV_LAST_MESSAGE,
         conversationId,

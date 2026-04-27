@@ -1,5 +1,5 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
 import * as schema from '@database/postgres/schema';
@@ -8,6 +8,7 @@ import {
   ChatMessageReadEventPayload,
 } from '../events/chat-socket-events';
 import { ChatGateway } from '../gateway/chat.gateway';
+import { ConversationRepository } from '../repositories/conversation.repository';
 
 type DrizzleClient = PostgresJsDatabase<typeof schema>;
 
@@ -17,6 +18,7 @@ export class ReadReceiptService {
     @Inject(DRIZZLE_CLIENT) private readonly db: DrizzleClient,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
+    private readonly conversationRepository: ConversationRepository,
   ) {}
 
   async markRead(
@@ -39,32 +41,15 @@ export class ReadReceiptService {
     if (!msgRows.length) return;
     const messageCreatedAt = msgRows[0].createdAt;
 
-    // Only update if the new message is newer than the current last read,
-    // preventing race conditions when client sends events out of order.
-    // Use RETURNING to detect whether the row actually changed — if not,
-    // the client already has up-to-date state and we skip the broadcast.
-    const updated = await this.db
-      .update(schema.conversationMembers)
-      .set({ lastReadMessageId: messageId })
-      .where(
-        and(
-          eq(schema.conversationMembers.conversationId, convId),
-          eq(schema.conversationMembers.userId, userId),
-          sql`(
-            ${schema.conversationMembers.lastReadMessageId} IS NULL
-            OR (
-              SELECT created_at FROM messages WHERE id = ${messageId} AND conversation_id = ${convId}
-            ) > (
-              SELECT created_at FROM messages WHERE id = ${schema.conversationMembers.lastReadMessageId}
-            )
-          )`,
-        ),
-      )
-      .returning({ conversationId: schema.conversationMembers.conversationId });
+    const advanced = await this.conversationRepository.advanceLastRead(
+      convId,
+      userId,
+      messageId,
+      messageCreatedAt,
+    );
 
-    if (!updated.length) return;
+    if (!advanced) return;
 
-    const readAt = new Date();
     this.gateway.broadcastToRoom(
       convId,
       CHAT_MESSAGE_READ,
@@ -72,7 +57,7 @@ export class ReadReceiptService {
         userId,
         messageId,
         messageCreatedAt,
-        readAt,
+        readAt: new Date(),
       } as ChatMessageReadEventPayload,
       socketId,
     );
