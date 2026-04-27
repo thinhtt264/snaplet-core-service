@@ -202,22 +202,29 @@ export class ConversationRepository {
   }
 
   /**
-   * Advance a user's last-read pointer for a conversation.
-   * Only moves forward — ignores the update if messageId is older than current.
-   * Returns true if the pointer was actually advanced.
+   * Validate the message exists in this conversation, resolve userA/userB slot,
+   * then advance the pointer — all in 2 queries (1 JOIN + 1 UPDATE).
+   * Returns messageCreatedAt for the caller to broadcast, or null if nothing changed.
    */
   async advanceLastRead(
     convId: string,
     userId: string,
     messageId: string,
-    messageCreatedAt: Date,
-  ): Promise<boolean> {
-    const [conv] = await this.db
-      .select({ userA: schema.conversations.userA })
-      .from(schema.conversations)
+  ): Promise<{ messageCreatedAt: Date } | null> {
+    const [row] = await this.db
+      .select({
+        messageCreatedAt: schema.messages.createdAt,
+        userA: schema.conversations.userA,
+      })
+      .from(schema.messages)
+      .innerJoin(
+        schema.conversations,
+        eq(schema.conversations.id, schema.messages.conversationId),
+      )
       .where(
         and(
-          eq(schema.conversations.id, convId),
+          eq(schema.messages.id, messageId),
+          eq(schema.messages.conversationId, convId),
           or(
             eq(schema.conversations.userA, userId),
             eq(schema.conversations.userB, userId),
@@ -226,29 +233,18 @@ export class ConversationRepository {
       )
       .limit(1);
 
-    if (!conv) return false;
+    if (!row) return null;
 
-    const isUserA = conv.userA === userId;
-    const updateData = isUserA
-      ? { userALastReadMsgId: messageId }
-      : { userBLastReadMsgId: messageId };
+    const updateData =
+      row.userA === userId
+        ? { userALastReadMsgId: messageId }
+        : { userBLastReadMsgId: messageId };
 
-    // Only advance if the new message is newer than the current last-read
-    const currentCol = isUserA
-      ? sql`user_a_last_read_msg_id`
-      : sql`user_b_last_read_msg_id`;
-
-    const orderingCheck = sql`(
-      ${currentCol} IS NULL
-      OR ${messageCreatedAt} > (SELECT created_at FROM messages WHERE id = ${currentCol})
-    )`;
-
-    const rows = await this.db
+    await this.db
       .update(schema.conversations)
       .set(updateData)
-      .where(and(eq(schema.conversations.id, convId), orderingCheck))
-      .returning({ id: schema.conversations.id });
+      .where(eq(schema.conversations.id, convId));
 
-    return rows.length > 0;
+    return { messageCreatedAt: row.messageCreatedAt };
   }
 }
