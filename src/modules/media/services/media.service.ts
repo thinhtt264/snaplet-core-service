@@ -62,6 +62,8 @@ export class MediaService {
           ownerId: new Types.ObjectId(ownerId),
           mimeType: item.mimeType,
           mediaKey,
+          width: item.width,
+          height: item.height,
           transform: item.transform,
           status: MediaStatus.PENDING,
         });
@@ -267,6 +269,8 @@ export class MediaService {
       mimeType: media.mimeType,
       images,
       duration: media.duration,
+      width: media.width,
+      height: media.height,
       transform: media.transform,
       status: media.status,
       createdAt: media.createdAt,

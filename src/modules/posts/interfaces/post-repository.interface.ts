@@ -15,6 +15,8 @@ export interface RawMediaFromAggregation {
   mimeType: ImageMimeType;
   mediaKey?: string;
   duration?: number;
+  width: number;
+  height: number;
   transform: ImageTransform;
   status: MediaStatus;
   createdAt: Date;

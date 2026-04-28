@@ -7,8 +7,12 @@ export interface MessageResponse {
   senderId: string;
   clientUuid: string;
   text: string | null;
-  mediaUrls: ImageSizesResponse | null;
-  mimeType: string | null;
+  media: {
+    urls: ImageSizesResponse;
+    mimeType: string | null;
+    width: number | null;
+    height: number | null;
+  } | null;
   isDeleted: boolean;
   replyTo: {
     id: string;

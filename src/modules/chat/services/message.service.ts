@@ -25,6 +25,7 @@ import {
 import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ReadReceiptService } from './read-receipt.service';
+import { normalizeImageV1MediaKey } from '@common/utils/media-key.utils';
 
 @Injectable()
 export class MessageService {
@@ -37,29 +38,40 @@ export class MessageService {
   ) {}
 
   async send(dto: SendMessageDto, senderId: string): Promise<MessageResponse> {
-    if (dto.text == null && dto.mediaKey == null && dto.mediaUrl == null) {
+    const {
+      text,
+      clientUuid,
+      recipientId,
+      mediaKey,
+      mediaUrl,
+      mimeType,
+      replyToId,
+      width,
+      height,
+    } = dto;
+
+    if (text == null && mediaKey == null && mediaUrl == null) {
       throw new BadRequestException(
         'Message must have at least text, mediaKey, or mediaUrl',
       );
     }
 
+    const normalizedMediaKey = normalizeImageV1MediaKey(mediaKey);
+
     const { id: conversationId } =
-      await this.conversationService.findOrCreateDirect(
-        senderId,
-        dto.recipientId,
-      );
+      await this.conversationService.findOrCreateDirect(senderId, recipientId);
 
     const message = await this.messageRepository.insertMessage({
       conversationId,
       senderId,
-      clientUuid: dto.clientUuid,
-      text: dto.text,
-      mediaKey: dto.mediaKey,
-      mediaUrl: dto.mediaUrl,
-      mimeType: dto.mimeType,
-      width: dto.width,
-      height: dto.height,
-      replyToId: dto.replyToId,
+      clientUuid,
+      text,
+      mediaKey: normalizedMediaKey,
+      mediaUrl,
+      mimeType: mimeType ?? null,
+      width: width ?? null,
+      height: height ?? null,
+      replyToId,
     });
 
     await Promise.all([

@@ -749,6 +749,8 @@ export class PostService {
             sizes: postImageSizes,
           }),
           duration: m.duration,
+          width: m.width,
+          height: m.height,
           transform: m.transform,
           status: m.status,
           createdAt: m.createdAt,

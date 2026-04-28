@@ -6,6 +6,7 @@ import {
   IsUrl,
   IsUUID,
   MaxLength,
+  Min,
   ValidateIf,
 } from 'class-validator';
 
@@ -29,17 +30,19 @@ export class SendMessageDto {
   @IsUrl()
   mediaUrl?: string;
 
-  // Required when mediaKey or mediaUrl is present
+  // Required when mediaUrl is present; mediaKey-backed uploads infer mimeType from Media.
   @ValidateIf((o) => o.mediaKey != null || o.mediaUrl != null)
   @IsString()
   mimeType?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => o.mediaKey != null || o.mediaUrl != null)
   @IsInt()
+  @Min(1)
   width?: number;
 
-  @IsOptional()
+  @ValidateIf((o) => o.mediaKey != null || o.mediaUrl != null)
   @IsInt()
+  @Min(1)
   height?: number;
 
   @IsOptional()

@@ -161,9 +161,13 @@ export class ConversationRepository {
 
     // Step 2: batch-fetch createdAt for all non-null lastReadMsgIds
     const allMsgIds = [
-      ...convRows.map((r) => r.userALastReadMsgId),
-      ...convRows.map((r) => r.userBLastReadMsgId),
-    ].filter((id): id is string => id != null);
+      ...new Set(
+        [
+          ...convRows.map((r) => r.userALastReadMsgId),
+          ...convRows.map((r) => r.userBLastReadMsgId),
+        ].filter((id): id is string => id != null),
+      ),
+    ];
 
     const msgTimestampMap = new Map<string, Date>();
     if (allMsgIds.length > 0) {

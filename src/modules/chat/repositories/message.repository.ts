@@ -81,7 +81,13 @@ export class MessageRepository {
     const existing = await this.db
       .select()
       .from(schema.messages)
-      .where(eq(schema.messages.clientUuid, params.clientUuid))
+      .where(
+        and(
+          eq(schema.messages.clientUuid, params.clientUuid),
+          eq(schema.messages.conversationId, params.conversationId),
+          eq(schema.messages.senderId, params.senderId),
+        ),
+      )
       .limit(1);
 
     if (!existing.length) {
@@ -263,20 +269,47 @@ export class MessageRepository {
   ): MessageResponse {
     const isDeleted = !!message.deletedAt;
     const mediaKey = isDeleted ? null : message.mediaKey;
+    const mediaUrl = isDeleted ? null : message.mediaUrl;
+    const hasMedia =
+      !isDeleted &&
+      (mediaKey != null ||
+        mediaUrl != null ||
+        message.mimeType != null ||
+        message.width != null ||
+        message.height != null);
 
-    let mediaUrls: MessageResponse['mediaUrls'] = null;
-    if (mediaKey) {
-      const original = this.storageService.getDefaultImageUrl(mediaKey);
-      const urls = this.storageService.getImageUrls(mediaKey, [
-        ImageSizeKey.XS,
-        ImageSizeKey.SM,
-      ]);
-      mediaUrls = {
-        original,
-        xs: urls?.[ImageSizeKey.XS] ?? '',
-        sm: urls?.[ImageSizeKey.SM] ?? '',
+    let media: MessageResponse['media'] = null;
+    if (hasMedia) {
+      let urls: NonNullable<MessageResponse['media']>['urls'] = {
+        original: '',
+        xs: '',
+        sm: '',
         md: '',
         xl: '',
+      };
+
+      if (mediaKey) {
+        const original = this.storageService.getDefaultImageUrl(mediaKey);
+        const sized = this.storageService.getImageUrls(mediaKey, [
+          ImageSizeKey.SM,
+          ImageSizeKey.MD,
+        ]);
+        urls = {
+          original,
+          xs: '',
+          sm: sized?.[ImageSizeKey.SM] ?? '',
+          md: sized?.[ImageSizeKey.MD] ?? '',
+          xl: '',
+        };
+      } else if (mediaUrl) {
+        urls.original = mediaUrl;
+      }
+
+      media = {
+        urls,
+        mimeType: isDeleted ? null : message.mimeType,
+        width: isDeleted ? null : (message.width ?? null),
+        height: isDeleted ? null : (message.height ?? null),
       };
     }
 
@@ -286,8 +319,7 @@ export class MessageRepository {
       senderId: message.senderId,
       clientUuid: message.clientUuid,
       text: isDeleted ? null : message.text,
-      mediaUrls,
-      mimeType: isDeleted ? null : message.mimeType,
+      media,
       isDeleted,
       replyTo: reply
         ? {

@@ -150,14 +150,18 @@ export class ConversationService {
 
     await this.conversationRepository.delete(convId);
 
-    await Promise.all(
-      memberUserIds.map((userId) =>
+    await Promise.all([
+      ...memberUserIds.map((userId) =>
         this.cacheService.invalidate(
           REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
           `${convId}:${userId}`,
         ),
       ),
-    );
+      this.cacheService.invalidate(
+        REDIS_KEY_FEATURES.CHAT_CONVERSATION_MEMBER,
+        `${convId}:members`,
+      ),
+    ]);
   }
 
   async getConversationList(
