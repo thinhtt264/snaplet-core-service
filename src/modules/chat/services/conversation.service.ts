@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConversationRepository } from '../repositories/conversation.repository';
@@ -48,6 +49,7 @@ export class ConversationService {
     private readonly cacheService: CacheService,
     private readonly relationshipService: RelationshipService,
     private readonly socketService: SocketService,
+    private readonly logger = new Logger(ConversationService.name),
   ) {}
 
   async notifyConversationUpdated(
@@ -169,88 +171,95 @@ export class ConversationService {
     cursor?: string,
     limit: number = 20,
   ): Promise<PaginatedConversations> {
-    const parsed = cursor ? this.decodeCursor(cursor) : undefined;
-    const rows = await this.conversationRepository.findAllByUserId(
-      userId,
-      parsed,
-      limit,
-    );
-
-    const hasMore = rows.length > limit;
-    const page = hasMore ? rows.slice(0, limit) : rows;
-
-    const convIds = page.map((conv) => conv.id);
-
-    // Partner IDs are embedded in the conversation rows — no extra batch query needed
-    const partnerIdMap = new Map(
-      page.map((conv) => [
-        conv.id,
-        conv.userA === userId ? conv.userB : conv.userA,
-      ]),
-    );
-    const uniquePartnerIds = [...new Set(partnerIdMap.values())];
-
-    const [
-      partnerMap,
-      lastMessageMap,
-      { myLastReadAtMap, partnerLastReadAtMap },
-    ] = await Promise.all([
-      this.cacheService.mgetOrCompute<CachedPartnerProfile>(
-        REDIS_KEY_FEATURES.CHAT_PARTNER_PROFILE,
-        uniquePartnerIds,
-        async (missIds) => {
-          const users = await this.userRepository.findManyByIds(missIds);
-          return new Map(
-            users.map((u) => [
-              u._id.toString(),
-              {
-                id: u._id.toString(),
-                username: u.username ?? null,
-                firstName: u.firstName ?? null,
-                lastName: u.lastName ?? null,
-                avatarKey: u.avatarKey ?? null,
-              },
-            ]),
-          );
-        },
-        PARTNER_PROFILE_CACHE_TTL_SECONDS,
-      ),
-
-      this.cacheService.mgetOrCompute<MessageResponse>(
-        REDIS_KEY_FEATURES.CHAT_CONV_LAST_MESSAGE,
-        convIds,
-        (missConvIds) =>
-          this.messageRepository.findLastMessagesBatch(missConvIds),
-        CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
-      ),
-
-      this.conversationRepository.getBothReadAtBatch(convIds, userId),
-    ]);
-
-    const data = page.map((conv) => {
-      const partnerId = partnerIdMap.get(conv.id) ?? null;
-      const partnerProfile = partnerId ? partnerMap.get(partnerId) : null;
-      const myLastReadAt = myLastReadAtMap.get(conv.id) ?? null;
-      const partnerLastReadAt = partnerLastReadAtMap.get(conv.id) ?? null;
-      const lastMessage = conv.lastMessageAt
-        ? (lastMessageMap.get(conv.id) ?? null)
-        : null;
-
-      return this.mapToConversationResponse(
-        conv,
-        partnerId,
-        partnerProfile ?? null,
-        lastMessage,
-        myLastReadAt,
-        partnerLastReadAt,
+    try {
+      const parsed = cursor ? this.decodeCursor(cursor) : undefined;
+      const rows = await this.conversationRepository.findAllByUserId(
+        userId,
+        parsed,
+        limit,
       );
-    });
 
-    const last = page[page.length - 1];
-    const nextCursor =
-      hasMore && last ? this.encodeCursor(last.lastMessageAt, last.id) : null;
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
 
-    return { data, pagination: { limit, nextCursor } };
+      const convIds = page.map((conv) => conv.id);
+
+      // Partner IDs are embedded in the conversation rows — no extra batch query needed
+      const partnerIdMap = new Map(
+        page.map((conv) => [
+          conv.id,
+          conv.userA === userId ? conv.userB : conv.userA,
+        ]),
+      );
+      const uniquePartnerIds = [...new Set(partnerIdMap.values())];
+
+      const [
+        partnerMap,
+        lastMessageMap,
+        { myLastReadAtMap, partnerLastReadAtMap },
+      ] = await Promise.all([
+        this.cacheService.mgetOrCompute<CachedPartnerProfile>(
+          REDIS_KEY_FEATURES.CHAT_PARTNER_PROFILE,
+          uniquePartnerIds,
+          async (missIds) => {
+            const users = await this.userRepository.findManyByIds(missIds);
+            return new Map(
+              users.map((u) => [
+                u._id.toString(),
+                {
+                  id: u._id.toString(),
+                  username: u.username ?? null,
+                  firstName: u.firstName ?? null,
+                  lastName: u.lastName ?? null,
+                  avatarKey: u.avatarKey ?? null,
+                },
+              ]),
+            );
+          },
+          PARTNER_PROFILE_CACHE_TTL_SECONDS,
+        ),
+
+        this.cacheService.mgetOrCompute<MessageResponse>(
+          REDIS_KEY_FEATURES.CHAT_CONV_LAST_MESSAGE,
+          convIds,
+          (missConvIds) =>
+            this.messageRepository.findLastMessagesBatch(missConvIds),
+          CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
+        ),
+
+        this.conversationRepository.getBothReadAtBatch(convIds, userId),
+      ]);
+
+      const data = page.map((conv) => {
+        const partnerId = partnerIdMap.get(conv.id) ?? null;
+        const partnerProfile = partnerId ? partnerMap.get(partnerId) : null;
+        const myLastReadAt = myLastReadAtMap.get(conv.id) ?? null;
+        const partnerLastReadAt = partnerLastReadAtMap.get(conv.id) ?? null;
+        const lastMessage = conv.lastMessageAt
+          ? (lastMessageMap.get(conv.id) ?? null)
+          : null;
+
+        return this.mapToConversationResponse(
+          conv,
+          partnerId,
+          partnerProfile ?? null,
+          lastMessage,
+          myLastReadAt,
+          partnerLastReadAt,
+        );
+      });
+
+      const last = page[page.length - 1];
+      const nextCursor =
+        hasMore && last ? this.encodeCursor(last.lastMessageAt, last.id) : null;
+
+      return { data, pagination: { limit, nextCursor } };
+    } catch (err) {
+      this.logger.error(
+        `getConversationList FAILED: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+      throw err;
+    }
   }
 
   async getConversationById(
