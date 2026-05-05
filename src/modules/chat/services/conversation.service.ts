@@ -41,6 +41,8 @@ interface CachedPartnerProfile {
 
 @Injectable()
 export class ConversationService {
+  private readonly logger = new Logger(ConversationService.name);
+
   constructor(
     private readonly conversationRepository: ConversationRepository,
     private readonly messageRepository: MessageRepository,
@@ -49,7 +51,6 @@ export class ConversationService {
     private readonly cacheService: CacheService,
     private readonly relationshipService: RelationshipService,
     private readonly socketService: SocketService,
-    private readonly logger = new Logger(ConversationService.name),
   ) {}
 
   async notifyConversationUpdated(
