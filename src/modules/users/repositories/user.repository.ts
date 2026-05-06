@@ -39,6 +39,11 @@ export class UserRepository implements IUserRepository {
     return this.userModel.findOne({ _id: id, isDeleted: false }).exec();
   }
 
+  async findManyByIds(ids: string[]): Promise<User[]> {
+    if (!ids.length) return [];
+    return this.userModel.find({ _id: { $in: ids }, isDeleted: false }).exec();
+  }
+
   async findByGoogleId(googleId: string): Promise<User | null> {
     return this.userModel
       .findOne({ googleId: googleId.trim(), isDeleted: false })

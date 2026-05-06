@@ -49,6 +49,8 @@ import {
   POST_CREATE_DAILY_LIMIT,
   POST_CREATE_LIMIT_TTL_SECONDS,
 } from '@common/constants';
+import { ConversationService } from '@modules/chat/services/conversation.service';
+import { MessageService } from '@modules/chat/services/message.service';
 
 @Injectable()
 export class PostService {
@@ -68,6 +70,9 @@ export class PostService {
     private readonly postUnreadService: PostUnreadService,
     private readonly postsUnreadQueueService: PostsUnreadQueueService,
     private readonly eventEmitter: EventEmitter2,
+    // Chat integration: used when comment feature triggers a DM (see plan Bước 6)
+    readonly conversationService: ConversationService,
+    readonly messageService: MessageService,
   ) {}
 
   async getPostsFeed(
@@ -117,10 +122,7 @@ export class PostService {
 
       return {
         data: this.transformPosts(result.posts, userId),
-        pagination: {
-          limit,
-          nextCursor,
-        },
+        pagination: { limit, nextCursor },
       };
     } catch (error: any) {
       if (error instanceof HttpException) {
@@ -747,6 +749,8 @@ export class PostService {
             sizes: postImageSizes,
           }),
           duration: m.duration,
+          width: m.width,
+          height: m.height,
           transform: m.transform,
           status: m.status,
           createdAt: m.createdAt,

@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   Min,
@@ -18,6 +19,14 @@ export class MediaUploadItem {
   @IsNotEmpty()
   @IsImageMimeType()
   mimeType: MimeTypes.ImageMimeType;
+
+  @IsInt()
+  @Min(1)
+  width: number;
+
+  @IsInt()
+  @Min(1)
+  height: number;
 
   @IsNotEmpty()
   @IsNumber()

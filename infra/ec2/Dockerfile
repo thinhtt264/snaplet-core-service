@@ -32,7 +32,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 
 COPY --from=builder /app/dist ./dist
 
+# Migration files + entrypoint
+COPY --from=builder /app/drizzle ./drizzle
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+
 EXPOSE 4040
 
-# Nest build outputs `dist/main.js` (not `dist/src/main.js`)
-CMD ["node", "dist/main.js"]
+ENTRYPOINT ["./entrypoint.sh"]

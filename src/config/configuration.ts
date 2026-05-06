@@ -107,6 +107,10 @@ export default () => ({
     clientId: process.env.GOOGLE_CLIENT_ID,
   },
 
+  postgres: {
+    url: process.env.POSTGRES_URL,
+  },
+
   /**
    * BullMQ Worker (notification push): same tuning idea as posts-unread.
    */

@@ -59,7 +59,7 @@ else
   echo "  already installed"
 fi
 
-echo "== Certbot (Let's Encrypt) =="
+echo "== Certbot (Let's Encrypt, tuỳ chọn — mặc định dùng Cloudflare Origin Certificate) =="
 if ! command -v certbot >/dev/null 2>&1; then
   if dnf list installed epel-release &>/dev/null; then
     :
@@ -76,36 +76,35 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
 [ -f "${DEPLOY_DIR}/config.env" ] && set -a && source "${DEPLOY_DIR}/config.env" && set +a
 
-echo "== Nginx SSL (self-signed) + config =="
-NGINX_SSL="/etc/nginx/ssl"
+echo "== Nginx + Cloudflare Origin Certificate paths =="
 NGINX_CONF_SRC="${DEPLOY_DIR}/nginx/app.conf"
+CF_ORIGIN_DIR="/etc/ssl/cloudflare"
+CF_ORIGIN_PEM="${CF_ORIGIN_DIR}/origin.pem"
+CF_ORIGIN_KEY="${CF_ORIGIN_DIR}/origin.key"
 
-sudo mkdir -p "$NGINX_SSL"
-if [ ! -f "$NGINX_SSL/self-signed.crt" ]; then
-  sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout "$NGINX_SSL/self-signed.key" -out "$NGINX_SSL/self-signed.crt" \
-    -subj "/CN=localhost"
-  echo "  self-signed cert created"
-else
-  echo "  self-signed cert already exists"
-fi
+sudo mkdir -p "$CF_ORIGIN_DIR"
+sudo chmod 755 "$CF_ORIGIN_DIR"
 
 if [ -f "$NGINX_CONF_SRC" ]; then
   sudo rm -f /etc/nginx/conf.d/default.conf 2>/dev/null
   sudo cp "$NGINX_CONF_SRC" /etc/nginx/conf.d/app.conf
+  if [ ! -f "$CF_ORIGIN_PEM" ] || [ ! -f "$CF_ORIGIN_KEY" ]; then
+    echo "  Chưa có Origin Certificate: Cloudflare > SSL/TLS > Origin Server > Create certificate,"
+    echo "  lưu PEM vào $CF_ORIGIN_PEM và key vào $CF_ORIGIN_KEY (sudo chmod 600 $CF_ORIGIN_KEY)"
+  fi
   if sudo nginx -t 2>/dev/null; then
     sudo systemctl reload nginx 2>/dev/null || sudo systemctl start nginx
     echo "  nginx config deployed, reloaded"
   else
-    echo "  nginx -t failed, kiểm tra config"
+    echo "  nginx -t failed — thường do chưa đặt $CF_ORIGIN_PEM và $CF_ORIGIN_KEY"
   fi
 else
   echo "  skip nginx app.conf (not found at $NGINX_CONF_SRC)"
 fi
 
-# Certbot real cert: chạy khi đã có DOMAIN trỏ về EC2 (port 80 mở)
+# Let's Encrypt: chỉ khi không dùng Origin PEM/key trên (ví dụ test không qua Cloudflare)
 if [ -n "${DOMAIN:-}" ]; then
-  echo "== Certbot cho domain $DOMAIN =="
+  echo "== Certbot cho domain $DOMAIN (tuỳ chọn) =="
   if command -v certbot >/dev/null 2>&1; then
     sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email 2>/dev/null && echo "  OK" || echo "  thất bại (kiểm tra DNS trỏ EC2, port 80 mở)"
   fi
