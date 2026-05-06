@@ -331,7 +331,12 @@ export class ConversationService {
   }
 
   private mapToConversationResponse(
-    conversation: { id: string; createdAt: Date; lastMessageAt: Date | null },
+    conversation: {
+      id: string;
+      createdAt: Date;
+      lastMessageAt: Date | null;
+      syncUpdatedAt: Date;
+    },
     partnerId: string | null,
     partnerProfile: CachedPartnerProfile | null,
     lastMessage: MessageResponse | null,
@@ -344,18 +349,8 @@ export class ConversationService {
         })
       : null;
 
-    const myLastSeenAt = myLastReadAt?.getTime() ?? null;
-    const partnerLastSeenAt = partnerLastReadAt?.getTime() ?? null;
-
-    const candidates = [
-      conversation.lastMessageAt?.getTime() ?? null,
-      myLastSeenAt,
-      partnerLastSeenAt,
-    ].filter((t): t is number => t !== null);
-    const updatedAt =
-      candidates.length > 0
-        ? Math.max(...candidates)
-        : conversation.createdAt.getTime();
+    const myLastSeenAt = myLastReadAt ?? null;
+    const partnerLastSeenAt = partnerLastReadAt ?? null;
 
     return {
       id: conversation.id,
@@ -376,7 +371,7 @@ export class ConversationService {
       lastMessage,
       myLastSeenAt,
       partnerLastSeenAt,
-      updatedAt: new Date(updatedAt),
+      syncUpdatedAt: conversation.syncUpdatedAt,
       createdAt: conversation.createdAt,
     };
   }

@@ -22,6 +22,7 @@ export const conversations = pgTable(
     userALastReadMsgId: uuid('user_a_last_read_msg_id'),
     userBLastReadMsgId: uuid('user_b_last_read_msg_id'),
     lastMessageAt: timestamp('last_message_at'),
+    syncUpdatedAt: timestamp('sync_updated_at').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => [

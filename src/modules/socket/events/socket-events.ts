@@ -20,7 +20,7 @@ export interface ConversationSeenPayload {
   conversationId: string;
   seenByUserId: string;
   messageId: string;
-  seenAt: number;
+  seenAt: Date;
 }
 
 export interface ConversationUpdatedPayload {

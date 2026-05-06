@@ -37,6 +37,8 @@ export interface ChatTypingEventPayload {
 }
 
 export interface ChatMessageReadEventPayload {
+  conversationId: string;
+  userId: string;
   messageId: string;
   messageCreatedAt: Date;
   readAt: Date;

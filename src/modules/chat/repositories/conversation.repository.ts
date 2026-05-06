@@ -61,7 +61,7 @@ export class ConversationRepository {
   async updateLastMessageAt(convId: string, timestamp: Date) {
     await this.db
       .update(schema.conversations)
-      .set({ lastMessageAt: timestamp })
+      .set({ lastMessageAt: timestamp, syncUpdatedAt: timestamp })
       .where(eq(schema.conversations.id, convId));
   }
 
@@ -246,7 +246,7 @@ export class ConversationRepository {
 
     await this.db
       .update(schema.conversations)
-      .set(updateData)
+      .set({ ...updateData, syncUpdatedAt: new Date() })
       .where(eq(schema.conversations.id, convId));
 
     return { messageCreatedAt: row.messageCreatedAt };

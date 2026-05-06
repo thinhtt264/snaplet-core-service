@@ -12,9 +12,9 @@ export interface ConversationResponse {
   id: string;
   partner: PartnerInfo;
   lastMessage: MessageResponse | null;
-  myLastSeenAt: number | null;
-  partnerLastSeenAt: number | null;
-  updatedAt: Date;
+  myLastSeenAt: Date | null;
+  partnerLastSeenAt: Date | null;
+  syncUpdatedAt: Date;
   createdAt: Date;
 }
 

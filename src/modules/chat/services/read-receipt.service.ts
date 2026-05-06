@@ -31,15 +31,17 @@ export class ReadReceiptService {
 
       if (!result) return;
 
+      const readAt = new Date();
       this.gateway.broadcastToRoom(
         convId,
         CHAT_MESSAGE_READ,
         {
+          conversationId: convId,
           userId,
           messageId,
           messageCreatedAt: result.messageCreatedAt,
-          readAt: new Date(),
-        } as ChatMessageReadEventPayload,
+          readAt,
+        } satisfies ChatMessageReadEventPayload,
         socketId,
       );
     } catch (err) {
