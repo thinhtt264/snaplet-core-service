@@ -331,6 +331,7 @@ export class MessageRepository {
         : null,
       pinnedAt: message.pinnedAt ?? null,
       createdAt: message.createdAt,
+      reactions: [],
     };
   }
 }

@@ -25,6 +25,8 @@ export const REDIS_KEY_FEATURES = {
   CHAT_PARTNER_PROFILE: 'chat:partner_profile',
   // Chat last message per conversation cache (keyed by convId)
   CHAT_CONV_LAST_MESSAGE: 'chat:conv_last_msg',
+  // Chat reactions per message (keyed by messageId)
+  CHAT_MESSAGE_REACTIONS: 'chat:message_reactions',
 } as const;
 
 export type RedisKeyFeature =

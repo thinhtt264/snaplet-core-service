@@ -16,8 +16,10 @@ import { CurrentUserId } from '@common/decorators/current-user.decorator';
 import { ConversationService } from '../services/conversation.service';
 import { MessageService } from '../services/message.service';
 import { GetConversationsDto } from '../dto/get-conversations.dto';
+import { GetConversationIdDto } from '../dto/get-conversation-id.dto';
 import { LoadMessagesDto } from '../dto/load-messages.dto';
 import {
+  ConversationIdLookupResponse,
   ConversationResponse,
   PaginatedConversations,
 } from '../interfaces/conversation.response';
@@ -45,6 +47,19 @@ export class ChatController {
       query.cursor,
       query.limit,
     );
+  }
+
+  @Get('lookup/id')
+  async getConversationIdByUsers(
+    @CurrentUserId() userId: string,
+    @Query() query: GetConversationIdDto,
+  ): Promise<ConversationIdLookupResponse> {
+    const conversationId =
+      await this.conversationService.getConversationIdByUsers(
+        userId,
+        query.targetUserId,
+      );
+    return { conversationId };
   }
 
   @Get(':convId')

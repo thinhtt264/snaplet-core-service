@@ -81,6 +81,25 @@ export const pinnedMessages = pgTable(
   (t) => [index('idx_pinned_conv').on(t.conversationId)],
 );
 
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    emoji: text('emoji').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_message_reactions_message_user').on(t.messageId, t.userId),
+    index('idx_message_reactions_message_id').on(t.messageId),
+  ],
+);
+
 export const archiveRefs = pgTable('archive_refs', {
   id: uuid('id')
     .primaryKey()

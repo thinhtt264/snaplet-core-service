@@ -14,6 +14,7 @@ import { TypingService } from './services/typing.service';
 import { ReadReceiptService } from './services/read-receipt.service';
 import { ConversationRepository } from './repositories/conversation.repository';
 import { MessageRepository } from './repositories/message.repository';
+import { MessageReactionRepository } from './repositories/message-reaction.repository';
 import { ChatArchiveProcessor } from './processors/chat-archive.processor';
 
 @Module({
@@ -34,6 +35,7 @@ import { ChatArchiveProcessor } from './processors/chat-archive.processor';
     ReadReceiptService,
     ConversationRepository,
     MessageRepository,
+    MessageReactionRepository,
     ChatArchiveProcessor,
   ],
   exports: [ConversationService, MessageService],

@@ -18,4 +18,8 @@ export interface ConversationResponse {
   createdAt: Date;
 }
 
+export interface ConversationIdLookupResponse {
+  conversationId: string | null;
+}
+
 export type PaginatedConversations = CursorPage<ConversationResponse>;

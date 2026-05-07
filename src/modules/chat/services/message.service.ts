@@ -9,6 +9,7 @@ import { ConversationService } from './conversation.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { SendMessageDto } from '../dto/send-message.dto';
 import {
+  MessageReactionResponse,
   MessageResponse,
   PaginatedMessages,
 } from '../interfaces/message.response';
@@ -16,7 +17,9 @@ import {
   CHAT_MESSAGE_DELETED,
   CHAT_MESSAGE_NEW,
   CHAT_MESSAGE_PINNED,
+  CHAT_MESSAGE_REACTION_UPDATED,
   CHAT_MESSAGE_UNPINNED,
+  ChatMessageReactionUpdatedEventPayload,
 } from '../events/chat-socket-events';
 import {
   CHAT_MESSAGE_PAGE_SIZE,
@@ -26,6 +29,7 @@ import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ReadReceiptService } from './read-receipt.service';
 import { normalizeImageV1MediaKey } from '@common/utils/media-key.utils';
+import { MessageReactionRepository } from '../repositories/message-reaction.repository';
 
 @Injectable()
 export class MessageService {
@@ -33,6 +37,7 @@ export class MessageService {
     private readonly messageRepository: MessageRepository,
     private readonly conversationService: ConversationService,
     private readonly readReceiptService: ReadReceiptService,
+    private readonly messageReactionRepository: MessageReactionRepository,
     private readonly gateway: ChatGateway,
     private readonly cacheService: CacheService,
   ) {}
@@ -121,7 +126,130 @@ export class MessageService {
       throw new ForbiddenException('Not a member of this conversation');
     }
 
-    return this.messageRepository.findByConversation(convId, cursor, limit);
+    const result = await this.messageRepository.findByConversation(
+      convId,
+      cursor,
+      limit,
+    );
+    const messageIds = result.data.map((message) => message.id);
+    const reactionsByMessageId =
+      await this.messageReactionRepository.findByMessageIds(messageIds);
+    result.data = result.data.map((message) => ({
+      ...message,
+      reactions: reactionsByMessageId.get(message.id) ?? [],
+    }));
+    return result;
+  }
+
+  async reactToMessage(
+    messageId: string,
+    userId: string,
+    emoji: string,
+  ): Promise<MessageReactionResponse[]> {
+    const normalizedEmoji = this.normalizeReactionEmoji(emoji);
+    const message = await this.messageRepository.findById(messageId);
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const isMember = await this.conversationService.isMember(
+      message.conversationId,
+      userId,
+    );
+    if (!isMember) {
+      throw new ForbiddenException('Not a member of this conversation');
+    }
+
+    const { actorEmoji, reactions } =
+      await this.messageReactionRepository.upsertToggle(
+        messageId,
+        userId,
+        normalizedEmoji,
+      );
+    await this.cacheService.set(
+      REDIS_KEY_FEATURES.CHAT_MESSAGE_REACTIONS,
+      messageId,
+      reactions,
+      CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
+    );
+
+    const payload: ChatMessageReactionUpdatedEventPayload = {
+      conversationId: message.conversationId,
+      messageId,
+      actorId: userId,
+      actorEmoji,
+      reactions,
+    };
+    this.gateway.broadcastToRoom(
+      message.conversationId,
+      CHAT_MESSAGE_REACTION_UPDATED,
+      payload,
+    );
+
+    return reactions;
+  }
+
+  async removeMessageReaction(
+    messageId: string,
+    userId: string,
+  ): Promise<void> {
+    const message = await this.messageRepository.findById(messageId);
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const isMember = await this.conversationService.isMember(
+      message.conversationId,
+      userId,
+    );
+    if (!isMember) {
+      throw new ForbiddenException('Not a member of this conversation');
+    }
+
+    const { actorEmoji, reactions } =
+      await this.messageReactionRepository.deleteByMessageAndUser(
+        messageId,
+        userId,
+      );
+    await this.cacheService.set(
+      REDIS_KEY_FEATURES.CHAT_MESSAGE_REACTIONS,
+      messageId,
+      reactions,
+      CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
+    );
+
+    const payload: ChatMessageReactionUpdatedEventPayload = {
+      conversationId: message.conversationId,
+      messageId,
+      actorId: userId,
+      actorEmoji,
+      reactions,
+    };
+    this.gateway.broadcastToRoom(
+      message.conversationId,
+      CHAT_MESSAGE_REACTION_UPDATED,
+      payload,
+    );
+  }
+
+  async getMessageReactions(
+    messageId: string,
+    userId: string,
+  ): Promise<MessageReactionResponse[]> {
+    const message = await this.messageRepository.findById(messageId);
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const isMember = await this.conversationService.isMember(
+      message.conversationId,
+      userId,
+    );
+    if (!isMember) {
+      throw new ForbiddenException('Not a member of this conversation');
+    }
+
+    return this.getCachedMessageReactions(messageId);
   }
 
   async hardDeleteMessage(
@@ -143,6 +271,9 @@ export class MessageService {
     }
 
     await this.messageRepository.hardDelete(messageId, requesterId);
+    void this.cacheService
+      .invalidate(REDIS_KEY_FEATURES.CHAT_MESSAGE_REACTIONS, messageId)
+      .catch(() => undefined);
 
     this.gateway.broadcastToRoom(convId, CHAT_MESSAGE_DELETED, { messageId });
   }
@@ -194,5 +325,34 @@ export class MessageService {
     }
 
     return this.messageRepository.findPinned(convId);
+  }
+
+  private async getCachedMessageReactions(
+    messageId: string,
+  ): Promise<MessageReactionResponse[]> {
+    return this.cacheService.getOrCompute<MessageReactionResponse[]>(
+      REDIS_KEY_FEATURES.CHAT_MESSAGE_REACTIONS,
+      messageId,
+      () => this.messageReactionRepository.findByMessageId(messageId),
+      CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
+      {
+        deserialize: (raw) => {
+          const parsed = JSON.parse(raw) as Array<
+            Omit<MessageReactionResponse, 'createdAt'> & { createdAt: string }
+          >;
+          return parsed.map((reaction) => ({
+            ...reaction,
+            createdAt: new Date(reaction.createdAt),
+          }));
+        },
+      },
+    );
+  }
+
+  private normalizeReactionEmoji(emoji: string): string {
+    return emoji
+      .trim()
+      .normalize('NFC')
+      .replace(/\uFE0F/g, '');
   }
 }
