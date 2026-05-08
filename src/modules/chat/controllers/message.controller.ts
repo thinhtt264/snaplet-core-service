@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -45,15 +44,6 @@ export class MessageController {
       userId,
       dto.emoji,
     );
-  }
-
-  @Delete(':messageId/reactions')
-  @HttpCode(HttpStatus.OK)
-  async removeReaction(
-    @CurrentUserId() userId: string,
-    @Param('messageId') messageId: string,
-  ): Promise<void> {
-    return this.messageService.removeMessageReaction(messageId, userId);
   }
 
   @Get(':messageId/reactions')

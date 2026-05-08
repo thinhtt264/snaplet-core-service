@@ -189,49 +189,6 @@ export class MessageService {
     return reactions;
   }
 
-  async removeMessageReaction(
-    messageId: string,
-    userId: string,
-  ): Promise<void> {
-    const message = await this.messageRepository.findById(messageId);
-    if (!message) {
-      throw new NotFoundException('Message not found');
-    }
-
-    const isMember = await this.conversationService.isMember(
-      message.conversationId,
-      userId,
-    );
-    if (!isMember) {
-      throw new ForbiddenException('Not a member of this conversation');
-    }
-
-    const { actorEmoji, reactions } =
-      await this.messageReactionRepository.deleteByMessageAndUser(
-        messageId,
-        userId,
-      );
-    await this.cacheService.set(
-      REDIS_KEY_FEATURES.CHAT_MESSAGE_REACTIONS,
-      messageId,
-      reactions,
-      CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
-    );
-
-    const payload: ChatMessageReactionUpdatedEventPayload = {
-      conversationId: message.conversationId,
-      messageId,
-      actorId: userId,
-      actorEmoji,
-      reactions,
-    };
-    this.gateway.broadcastToRoom(
-      message.conversationId,
-      CHAT_MESSAGE_REACTION_UPDATED,
-      payload,
-    );
-  }
-
   async getMessageReactions(
     messageId: string,
     userId: string,

@@ -16,6 +16,8 @@ import { ConversationRepository } from './repositories/conversation.repository';
 import { MessageRepository } from './repositories/message.repository';
 import { MessageReactionRepository } from './repositories/message-reaction.repository';
 import { ChatArchiveProcessor } from './processors/chat-archive.processor';
+import { ChatMediaCleanupProcessor } from './processors/chat-media-cleanup.processor';
+import { ChatMediaCleanupQueueService } from './queue/chat-media-cleanup.queue.service';
 
 @Module({
   imports: [
@@ -37,7 +39,9 @@ import { ChatArchiveProcessor } from './processors/chat-archive.processor';
     MessageRepository,
     MessageReactionRepository,
     ChatArchiveProcessor,
+    ChatMediaCleanupProcessor,
+    ChatMediaCleanupQueueService,
   ],
-  exports: [ConversationService, MessageService],
+  exports: [ConversationService, MessageService, ChatMediaCleanupQueueService],
 })
 export class ChatModule {}

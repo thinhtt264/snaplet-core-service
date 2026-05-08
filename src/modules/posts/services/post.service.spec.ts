@@ -257,6 +257,7 @@ describe('PostService - deletePost', () => {
     const postRepository = {
       findPostById: jest.fn().mockResolvedValue({
         userId: new Types.ObjectId(postOwnerUserId),
+        mediaIds: [],
       }),
       hardDeletePost: jest.fn().mockResolvedValue(undefined),
     };
@@ -273,6 +274,12 @@ describe('PostService - deletePost', () => {
     const postsUnreadQueueService = {
       enqueuePostDeleted: jest.fn().mockResolvedValue(undefined),
     };
+    const chatMediaCleanupQueueService = {
+      enqueueMarkSourceDeleted: jest.fn().mockResolvedValue(undefined),
+    };
+    const mediaService = {
+      getMediaKeysByIds: jest.fn().mockResolvedValue([]),
+    };
     const postAudienceService = {
       resolveRecipientUserIds: jest
         .fn()
@@ -286,7 +293,7 @@ describe('PostService - deletePost', () => {
     const service = new PostService(
       postRepository as any,
       postReactionRepository as any,
-      {} as any,
+      mediaService as any,
       {} as any,
       postAudienceService as any,
       {} as any,
@@ -295,6 +302,9 @@ describe('PostService - deletePost', () => {
       {} as any,
       postsUnreadQueueService as any,
       eventEmitter,
+      {} as any,
+      {} as any,
+      chatMediaCleanupQueueService as any,
     );
 
     await service.deletePost(postOwnerUserId, postId);

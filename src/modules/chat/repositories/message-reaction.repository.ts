@@ -67,35 +67,6 @@ export class MessageReactionRepository {
     return { actorEmoji, reactions };
   }
 
-  async deleteByMessageAndUser(
-    messageId: string,
-    userId: string,
-  ): Promise<MessageReactionMutationResult> {
-    const query = sql<MessageReactionRow>`
-      WITH deleted AS (
-        DELETE FROM message_reactions
-        WHERE message_id = ${messageId}::uuid
-          AND user_id = ${userId}
-        RETURNING id
-      )
-      SELECT
-        mr.id,
-        mr.message_id AS "messageId",
-        mr.user_id AS "userId",
-        mr.emoji,
-        mr.created_at AS "createdAt"
-      FROM message_reactions mr
-      WHERE mr.message_id = ${messageId}::uuid
-      ORDER BY mr.created_at ASC, mr.id ASC
-    `;
-
-    const result = await this.db.execute(query);
-    const rows = result as unknown as MessageReactionRow[];
-    const reactions = rows.map((row) => this.toReactionResponse(row));
-
-    return { actorEmoji: null, reactions };
-  }
-
   async findByMessageId(messageId: string): Promise<MessageReactionResponse[]> {
     const rows = await this.db
       .select()

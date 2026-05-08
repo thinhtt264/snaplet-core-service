@@ -20,6 +20,7 @@ export interface MessageResponse {
     mimeType: string | null;
     width: number | null;
     height: number | null;
+    status: 'AVAILABLE' | 'SOURCE_DELETED';
   } | null;
   isDeleted: boolean;
   replyTo: {

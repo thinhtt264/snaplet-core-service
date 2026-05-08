@@ -224,6 +224,21 @@ export class MediaService {
     return media.every((m) => m.status === MediaStatus.READY);
   }
 
+  async getMediaKeysByIds(mediaIds: string[]): Promise<string[]> {
+    const objectIds = mediaIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    if (!objectIds.length) {
+      return [];
+    }
+
+    const media = await this.mediaRepository.findByIds(objectIds);
+    return media
+      .map((item) => item.mediaKey?.trim())
+      .filter((key): key is string => Boolean(key));
+  }
+
   private async processMedia(mediaId: Types.ObjectId): Promise<void> {
     await this.mediaRepository.updateStatusIf(
       mediaId,

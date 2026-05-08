@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "media_status" text DEFAULT 'AVAILABLE' NOT NULL;

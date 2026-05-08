@@ -34,6 +34,7 @@ interface InsertMessageParams {
 }
 
 type DrizzleClient = PostgresJsDatabase<typeof schema>;
+type MessageMediaStatus = 'AVAILABLE' | 'SOURCE_DELETED';
 
 @Injectable()
 export class MessageRepository {
@@ -68,6 +69,7 @@ export class MessageRepository {
         mimeType,
         width,
         height,
+        mediaStatus: 'AVAILABLE',
         replyToId,
       })
       .onConflictDoNothing()
@@ -263,6 +265,21 @@ export class MessageRepository {
     return this.toMessageResponse(rows[0], null);
   }
 
+  async markMediaSourceDeletedByKeys(mediaKeys: string[]): Promise<void> {
+    const uniqueMediaKeys = Array.from(
+      new Set(mediaKeys.map((key) => key.trim()).filter(Boolean)),
+    );
+
+    if (!uniqueMediaKeys.length) {
+      return;
+    }
+
+    await this.db
+      .update(schema.messages)
+      .set({ mediaStatus: 'SOURCE_DELETED' })
+      .where(inArray(schema.messages.mediaKey, uniqueMediaKeys));
+  }
+
   private toMessageResponse(
     message: typeof schema.messages.$inferSelect,
     reply: typeof schema.messages.$inferSelect | null,
@@ -280,6 +297,11 @@ export class MessageRepository {
 
     let media: MessageResponse['media'] = null;
     if (hasMedia) {
+      const mediaStatus: MessageMediaStatus =
+        message.mediaStatus === 'SOURCE_DELETED'
+          ? 'SOURCE_DELETED'
+          : 'AVAILABLE';
+      const isSourceDeleted = mediaStatus === 'SOURCE_DELETED';
       let urls: NonNullable<MessageResponse['media']>['urls'] = {
         original: '',
         xs: '',
@@ -288,7 +310,7 @@ export class MessageRepository {
         xl: '',
       };
 
-      if (mediaKey) {
+      if (mediaKey && !isSourceDeleted) {
         const original = this.storageService.getDefaultImageUrl(mediaKey);
         const sized = this.storageService.getImageUrls(mediaKey, [
           ImageSizeKey.SM,
@@ -310,6 +332,7 @@ export class MessageRepository {
         mimeType: isDeleted ? null : message.mimeType,
         width: isDeleted ? null : (message.width ?? null),
         height: isDeleted ? null : (message.height ?? null),
+        status: mediaStatus,
       };
     }
 
