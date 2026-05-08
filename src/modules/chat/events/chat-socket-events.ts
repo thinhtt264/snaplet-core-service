@@ -1,3 +1,5 @@
+import { MessageReactionRecordResponse } from '../interfaces/message.response';
+
 // Client → Server
 export const CHAT_JOIN_CONVERSATION = 'chat:join';
 export const CHAT_LEAVE_CONVERSATION = 'chat:leave';
@@ -55,11 +57,5 @@ export interface ChatMessageReactionUpdatedEventPayload {
   messageId: string;
   actorId: string;
   actorEmoji: string | null;
-  reactions: {
-    id: string;
-    messageId: string;
-    userId: string;
-    emoji: string;
-    createdAt: Date;
-  }[];
+  reactions: MessageReactionRecordResponse[];
 }

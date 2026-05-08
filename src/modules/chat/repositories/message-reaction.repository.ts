@@ -3,12 +3,12 @@ import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
 import * as schema from '@database/postgres/schema';
-import { MessageReactionResponse } from '../interfaces/message.response';
+import { MessageReactionRecordResponse } from '../interfaces/message.response';
 
 type DrizzleClient = PostgresJsDatabase<typeof schema>;
 interface MessageReactionMutationResult {
   actorEmoji: string | null;
-  reactions: MessageReactionResponse[];
+  reactions: MessageReactionRecordResponse[];
 }
 
 interface MessageReactionRow {
@@ -67,7 +67,9 @@ export class MessageReactionRepository {
     return { actorEmoji, reactions };
   }
 
-  async findByMessageId(messageId: string): Promise<MessageReactionResponse[]> {
+  async findByMessageId(
+    messageId: string,
+  ): Promise<MessageReactionRecordResponse[]> {
     const rows = await this.db
       .select()
       .from(schema.messageReactions)
@@ -82,7 +84,7 @@ export class MessageReactionRepository {
 
   async findByMessageIds(
     messageIds: string[],
-  ): Promise<Map<string, MessageReactionResponse[]>> {
+  ): Promise<Map<string, MessageReactionRecordResponse[]>> {
     if (!messageIds.length) return new Map();
 
     const rows = await this.db
@@ -95,7 +97,7 @@ export class MessageReactionRepository {
         asc(schema.messageReactions.id),
       );
 
-    const grouped = new Map<string, MessageReactionResponse[]>();
+    const grouped = new Map<string, MessageReactionRecordResponse[]>();
     for (const row of rows) {
       const mapped = this.toReactionResponse(row);
       const current = grouped.get(mapped.messageId);
@@ -110,7 +112,7 @@ export class MessageReactionRepository {
 
   private toReactionResponse(
     row: typeof schema.messageReactions.$inferSelect | MessageReactionRow,
-  ): MessageReactionResponse {
+  ): MessageReactionRecordResponse {
     return {
       id: row.id,
       messageId: row.messageId,

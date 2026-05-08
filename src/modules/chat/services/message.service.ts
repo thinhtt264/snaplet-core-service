@@ -9,6 +9,7 @@ import { ConversationService } from './conversation.service';
 import { ChatGateway } from '../gateway/chat.gateway';
 import { SendMessageDto } from '../dto/send-message.dto';
 import {
+  MessageReactionRecordResponse,
   MessageReactionResponse,
   MessageResponse,
   PaginatedMessages,
@@ -30,6 +31,15 @@ import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ReadReceiptService } from './read-receipt.service';
 import { normalizeImageV1MediaKey } from '@common/utils/media-key.utils';
 import { MessageReactionRepository } from '../repositories/message-reaction.repository';
+import { UserService } from '@modules/users/services/user.service';
+
+type ReactionUserBasic = MessageReactionResponse['user'];
+type CachedMessageReaction = Omit<
+  MessageReactionRecordResponse,
+  'createdAt'
+> & {
+  createdAt: string;
+};
 
 @Injectable()
 export class MessageService {
@@ -38,6 +48,7 @@ export class MessageService {
     private readonly conversationService: ConversationService,
     private readonly readReceiptService: ReadReceiptService,
     private readonly messageReactionRepository: MessageReactionRepository,
+    private readonly userService: UserService,
     private readonly gateway: ChatGateway,
     private readonly cacheService: CacheService,
   ) {}
@@ -132,11 +143,11 @@ export class MessageService {
       limit,
     );
     const messageIds = result.data.map((message) => message.id);
-    const reactionsByMessageId =
+    const reactionRecordsByMessageId =
       await this.messageReactionRepository.findByMessageIds(messageIds);
     result.data = result.data.map((message) => ({
       ...message,
-      reactions: reactionsByMessageId.get(message.id) ?? [],
+      reactions: reactionRecordsByMessageId.get(message.id) ?? [],
     }));
     return result;
   }
@@ -145,7 +156,7 @@ export class MessageService {
     messageId: string,
     userId: string,
     emoji: string,
-  ): Promise<MessageReactionResponse[]> {
+  ): Promise<MessageReactionRecordResponse[]> {
     const normalizedEmoji = this.normalizeReactionEmoji(emoji);
     const message = await this.messageRepository.findById(messageId);
     if (!message) {
@@ -206,7 +217,8 @@ export class MessageService {
       throw new ForbiddenException('Not a member of this conversation');
     }
 
-    return this.getCachedMessageReactions(messageId);
+    const reactionRecords = await this.getCachedMessageReactions(messageId);
+    return this.enrichReactionRecords(reactionRecords);
   }
 
   async hardDeleteMessage(
@@ -286,24 +298,51 @@ export class MessageService {
 
   private async getCachedMessageReactions(
     messageId: string,
-  ): Promise<MessageReactionResponse[]> {
-    return this.cacheService.getOrCompute<MessageReactionResponse[]>(
+  ): Promise<MessageReactionRecordResponse[]> {
+    return this.cacheService.getOrCompute<MessageReactionRecordResponse[]>(
       REDIS_KEY_FEATURES.CHAT_MESSAGE_REACTIONS,
       messageId,
       () => this.messageReactionRepository.findByMessageId(messageId),
       CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
       {
-        deserialize: (raw) => {
-          const parsed = JSON.parse(raw) as Array<
-            Omit<MessageReactionResponse, 'createdAt'> & { createdAt: string }
-          >;
-          return parsed.map((reaction) => ({
-            ...reaction,
-            createdAt: new Date(reaction.createdAt),
-          }));
-        },
+        deserialize: (raw) => this.deserializeCachedReactions(raw),
       },
     );
+  }
+
+  private async enrichReactionRecords(
+    records: MessageReactionRecordResponse[],
+  ): Promise<MessageReactionResponse[]> {
+    const defaultUserBasic: ReactionUserBasic = {
+      userId: '',
+      username: '',
+      firstName: '',
+      lastName: '',
+      avatarUrls: this.userService.getAvatarUrlsForKey(null),
+    };
+    const userIds = [...new Set(records.map((record) => record.userId))];
+    const userMap = await this.userService.getUserBasicInfoMapByIds(userIds);
+
+    return records.map((record) => {
+      const user = userMap.get(record.userId) ?? defaultUserBasic;
+      return {
+        ...record,
+        user,
+      };
+    });
+  }
+
+  private deserializeCachedReactions(
+    raw: string,
+  ): MessageReactionRecordResponse[] {
+    const parsed = JSON.parse(raw) as CachedMessageReaction[];
+    return parsed.map((item) => ({
+      id: item.id,
+      messageId: item.messageId,
+      userId: item.userId,
+      emoji: item.emoji,
+      createdAt: new Date(item.createdAt),
+    }));
   }
 
   private normalizeReactionEmoji(emoji: string): string {

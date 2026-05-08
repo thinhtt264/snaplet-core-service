@@ -9,6 +9,7 @@ import { User } from '../schemas/user.schema';
 import {
   AvatarUploadRequestResponse,
   IUserProfileResponse,
+  UserBasicInfoResponse,
 } from '../interfaces/user-response.interface';
 import { UserRepository } from '../repositories/user.repository';
 import { UserValidationService } from './user-validation.service';
@@ -371,5 +372,25 @@ export class UserService {
       createdAt: user.createdAt,
       initiator: user.initiator,
     }));
+  }
+
+  async getUserBasicInfoMapByIds(
+    userIds: string[],
+  ): Promise<Map<string, UserBasicInfoResponse>> {
+    const users = await this.userRepository.findManyByIds(userIds);
+    const result = new Map<string, UserBasicInfoResponse>();
+
+    for (const user of users) {
+      const userId = user._id.toString();
+      result.set(userId, {
+        userId,
+        username: user.username ?? '',
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        avatarUrls: this.getAvatarUrlsForKey(user.avatarKey),
+      });
+    }
+
+    return result;
   }
 }

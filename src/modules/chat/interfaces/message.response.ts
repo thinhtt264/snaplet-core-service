@@ -1,12 +1,17 @@
 import { CursorPage } from '@common/types';
 import { ImageSizesResponse } from '@common/types/image-sizes.types';
+import { UserBasicInfoResponse } from '@modules/users/interfaces/user-response.interface';
 
-export interface MessageReactionResponse {
+export interface MessageReactionRecordResponse {
   id: string;
   messageId: string;
   userId: string;
   emoji: string;
   createdAt: Date;
+}
+
+export interface MessageReactionResponse extends MessageReactionRecordResponse {
+  user: UserBasicInfoResponse;
 }
 
 export interface MessageResponse {
@@ -31,7 +36,7 @@ export interface MessageResponse {
   } | null;
   pinnedAt: Date | null;
   createdAt: Date;
-  reactions: MessageReactionResponse[];
+  reactions: MessageReactionRecordResponse[];
 }
 
 export type PaginatedMessages = CursorPage<MessageResponse>;

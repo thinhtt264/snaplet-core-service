@@ -13,6 +13,7 @@ import { CurrentUserId } from '@common/decorators/current-user.decorator';
 import { MessageService } from '../services/message.service';
 import { SendMessageDto } from '../dto/send-message.dto';
 import {
+  MessageReactionRecordResponse,
   MessageReactionResponse,
   MessageResponse,
 } from '../interfaces/message.response';
@@ -38,7 +39,7 @@ export class MessageController {
     @CurrentUserId() userId: string,
     @Param('messageId') messageId: string,
     @Body() dto: ReactToMessageDto,
-  ): Promise<MessageReactionResponse[]> {
+  ): Promise<MessageReactionRecordResponse[]> {
     return await this.messageService.reactToMessage(
       messageId,
       userId,
