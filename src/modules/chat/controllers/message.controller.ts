@@ -37,7 +37,7 @@ export class MessageController {
   @HttpCode(HttpStatus.OK)
   async reactToMessage(
     @CurrentUserId() userId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
     @Body() dto: ReactToMessageDto,
   ): Promise<MessageReactionRecordResponse[]> {
     return await this.messageService.reactToMessage(
