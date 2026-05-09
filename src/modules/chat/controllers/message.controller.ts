@@ -50,7 +50,7 @@ export class MessageController {
   @Get(':messageId/reactions')
   async getMessageReactions(
     @CurrentUserId() userId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<MessageReactionResponse[]> {
     return this.messageService.getMessageReactions(messageId, userId);
   }
