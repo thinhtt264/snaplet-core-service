@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
 import * as schema from '@database/postgres/schema';
@@ -32,7 +32,10 @@ export class MessageReactionRepository {
       .select({ emoji: schema.messageReactions.emoji })
       .from(schema.messageReactions)
       .where(
-        sql`${schema.messageReactions.messageId} = ${messageId}::uuid AND ${schema.messageReactions.userId} = ${userId}`,
+        and(
+          eq(schema.messageReactions.messageId, messageId),
+          eq(schema.messageReactions.userId, userId),
+        ),
       )
       .limit(1);
 
@@ -41,7 +44,10 @@ export class MessageReactionRepository {
       await this.db
         .delete(schema.messageReactions)
         .where(
-          sql`${schema.messageReactions.messageId} = ${messageId}::uuid AND ${schema.messageReactions.userId} = ${userId}`,
+          and(
+            eq(schema.messageReactions.messageId, messageId),
+            eq(schema.messageReactions.userId, userId),
+          ),
         );
     } else {
       await this.db

@@ -75,7 +75,7 @@ export class ChatController {
   async markMessageSeen(
     @CurrentUserId() userId: string,
     @Param('convId', ParseUUIDPipe) convId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
     return this.messageService.markMessageSeen(convId, messageId, userId);
   }
@@ -99,7 +99,7 @@ export class ChatController {
   async deleteMessage(
     @CurrentUserId() userId: string,
     @Param('convId', ParseUUIDPipe) convId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
     return this.messageService.hardDeleteMessage(convId, messageId, userId);
   }
@@ -109,7 +109,7 @@ export class ChatController {
   async pinMessage(
     @CurrentUserId() userId: string,
     @Param('convId', ParseUUIDPipe) convId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
     return this.messageService.pinMessage(convId, messageId, userId);
   }
@@ -119,7 +119,7 @@ export class ChatController {
   async unpinMessage(
     @CurrentUserId() userId: string,
     @Param('convId', ParseUUIDPipe) convId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
     return this.messageService.unpinMessage(convId, messageId, userId);
   }
