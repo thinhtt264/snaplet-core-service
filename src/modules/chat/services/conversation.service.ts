@@ -119,6 +119,23 @@ export class ConversationService {
     return { id: conversation.id, isNew };
   }
 
+  async getConversationIdByUsers(
+    requesterId: string,
+    targetUserId: string,
+  ): Promise<string | null> {
+    if (requesterId === targetUserId) {
+      throw new BadRequestException(
+        'targetUserId must be different from requester',
+      );
+    }
+
+    const conversation = await this.conversationRepository.findByPair(
+      requesterId,
+      targetUserId,
+    );
+    return conversation?.id ?? null;
+  }
+
   async updateLastMessageAt(convId: string, timestamp: Date): Promise<void> {
     await this.conversationRepository.updateLastMessageAt(convId, timestamp);
   }

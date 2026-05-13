@@ -50,6 +50,7 @@ export const messages = pgTable(
     mimeType: text('mime_type'),
     width: integer('width'),
     height: integer('height'),
+    mediaStatus: text('media_status').default('AVAILABLE').notNull(),
     replyToId: uuid('reply_to_id').references(() => messages.id, {
       onDelete: 'set null',
     }),
@@ -79,6 +80,25 @@ export const pinnedMessages = pgTable(
     pinnedAt: timestamp('pinned_at').defaultNow().notNull(),
   },
   (t) => [index('idx_pinned_conv').on(t.conversationId)],
+);
+
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    emoji: text('emoji').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_message_reactions_message_user').on(t.messageId, t.userId),
+    index('idx_message_reactions_message_id').on(t.messageId),
+  ],
 );
 
 export const archiveRefs = pgTable('archive_refs', {

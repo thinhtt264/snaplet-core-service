@@ -16,8 +16,10 @@ import { CurrentUserId } from '@common/decorators/current-user.decorator';
 import { ConversationService } from '../services/conversation.service';
 import { MessageService } from '../services/message.service';
 import { GetConversationsDto } from '../dto/get-conversations.dto';
+import { GetConversationIdDto } from '../dto/get-conversation-id.dto';
 import { LoadMessagesDto } from '../dto/load-messages.dto';
 import {
+  ConversationIdLookupResponse,
   ConversationResponse,
   PaginatedConversations,
 } from '../interfaces/conversation.response';
@@ -47,6 +49,19 @@ export class ChatController {
     );
   }
 
+  @Get('lookup/id')
+  async getConversationIdByUsers(
+    @CurrentUserId() userId: string,
+    @Query() query: GetConversationIdDto,
+  ): Promise<ConversationIdLookupResponse> {
+    const conversationId =
+      await this.conversationService.getConversationIdByUsers(
+        userId,
+        query.targetUserId,
+      );
+    return { conversationId };
+  }
+
   @Get(':convId')
   async getConversation(
     @CurrentUserId() userId: string,
@@ -60,7 +75,7 @@ export class ChatController {
   async markMessageSeen(
     @CurrentUserId() userId: string,
     @Param('convId', ParseUUIDPipe) convId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
     return this.messageService.markMessageSeen(convId, messageId, userId);
   }
@@ -84,7 +99,7 @@ export class ChatController {
   async deleteMessage(
     @CurrentUserId() userId: string,
     @Param('convId', ParseUUIDPipe) convId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
     return this.messageService.hardDeleteMessage(convId, messageId, userId);
   }
@@ -94,7 +109,7 @@ export class ChatController {
   async pinMessage(
     @CurrentUserId() userId: string,
     @Param('convId', ParseUUIDPipe) convId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
     return this.messageService.pinMessage(convId, messageId, userId);
   }
@@ -104,7 +119,7 @@ export class ChatController {
   async unpinMessage(
     @CurrentUserId() userId: string,
     @Param('convId', ParseUUIDPipe) convId: string,
-    @Param('messageId') messageId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
     return this.messageService.unpinMessage(convId, messageId, userId);
   }

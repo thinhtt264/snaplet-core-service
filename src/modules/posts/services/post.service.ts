@@ -4,6 +4,7 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -51,9 +52,11 @@ import {
 } from '@common/constants';
 import { ConversationService } from '@modules/chat/services/conversation.service';
 import { MessageService } from '@modules/chat/services/message.service';
+import { ChatMediaCleanupQueueService } from '@modules/chat/queue/chat-media-cleanup.queue.service';
 
 @Injectable()
 export class PostService {
+  private readonly logger = new Logger(PostService.name);
   private static readonly EMOJI_SEGMENTER = new Intl.Segmenter('en', {
     granularity: 'grapheme',
   });
@@ -73,6 +76,7 @@ export class PostService {
     // Chat integration: used when comment feature triggers a DM (see plan Bước 6)
     readonly conversationService: ConversationService,
     readonly messageService: MessageService,
+    private readonly chatMediaCleanupQueueService: ChatMediaCleanupQueueService,
   ) {}
 
   async getPostsFeed(
@@ -452,6 +456,22 @@ export class PostService {
       );
       await this.cacheService.invalidateByTag(`post:${postId}`);
       await this.postRepository.hardDeletePost(postIdObjectId);
+      setImmediate(() => {
+        void this.mediaService
+          .getMediaKeysByIds(post.mediaIds.map((id) => id.toString()))
+          .then((mediaKeysToMarkDeleted) =>
+            this.chatMediaCleanupQueueService.enqueueMarkSourceDeleted(
+              mediaKeysToMarkDeleted,
+            ),
+          )
+          .catch((error: unknown) => {
+            const errorMessage =
+              error instanceof Error ? error.message : 'unknown error';
+            this.logger.warn(
+              `Failed to enqueue chat media cleanup for deleted post ${postId}: ${errorMessage}`,
+            );
+          });
+      });
       const recipientUserIds =
         await this.postAudienceService.resolveRecipientUserIds({
           authorId: post.userId.toString(),
