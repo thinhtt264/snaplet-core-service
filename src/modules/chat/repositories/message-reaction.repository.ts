@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE_CLIENT } from '@database/postgres/postgres.provider';
 import * as schema from '@database/postgres/schema';
@@ -28,49 +28,64 @@ export class MessageReactionRepository {
     userId: string,
     emoji: string,
   ): Promise<MessageReactionMutationResult> {
-    const existingRows = await this.db
-      .select({ emoji: schema.messageReactions.emoji })
-      .from(schema.messageReactions)
-      .where(
-        and(
-          eq(schema.messageReactions.messageId, messageId),
-          eq(schema.messageReactions.userId, userId),
-        ),
-      )
-      .limit(1);
+    return this.db.transaction(async (tx) => {
+      // Serialize toggles for the same (message, user) so concurrent taps stay consistent.
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${messageId}), hashtext(${userId}))`,
+      );
 
-    let actorEmoji: string | null = null;
-    if (existingRows[0]?.emoji === emoji) {
-      await this.db
-        .delete(schema.messageReactions)
+      const existingRows = await tx
+        .select({ emoji: schema.messageReactions.emoji })
+        .from(schema.messageReactions)
         .where(
           and(
             eq(schema.messageReactions.messageId, messageId),
             eq(schema.messageReactions.userId, userId),
           ),
-        );
-    } else {
-      await this.db
-        .insert(schema.messageReactions)
-        .values({
-          messageId,
-          userId,
-          emoji,
-        })
-        .onConflictDoUpdate({
-          target: [
-            schema.messageReactions.messageId,
-            schema.messageReactions.userId,
-          ],
-          set: {
-            emoji,
-          },
-        });
-      actorEmoji = emoji;
-    }
+        )
+        .limit(1);
 
-    const reactions = await this.findByMessageId(messageId);
-    return { actorEmoji, reactions };
+      let actorEmoji: string | null = null;
+      if (existingRows[0]?.emoji === emoji) {
+        await tx
+          .delete(schema.messageReactions)
+          .where(
+            and(
+              eq(schema.messageReactions.messageId, messageId),
+              eq(schema.messageReactions.userId, userId),
+            ),
+          );
+      } else {
+        await tx
+          .insert(schema.messageReactions)
+          .values({
+            messageId,
+            userId,
+            emoji,
+          })
+          .onConflictDoUpdate({
+            target: [
+              schema.messageReactions.messageId,
+              schema.messageReactions.userId,
+            ],
+            set: {
+              emoji,
+            },
+          });
+        actorEmoji = emoji;
+      }
+
+      const rows = await tx
+        .select()
+        .from(schema.messageReactions)
+        .where(eq(schema.messageReactions.messageId, messageId))
+        .orderBy(
+          asc(schema.messageReactions.createdAt),
+          asc(schema.messageReactions.id),
+        );
+      const reactions = rows.map((row) => this.toReactionResponse(row));
+      return { actorEmoji, reactions };
+    });
   }
 
   async findByMessageId(

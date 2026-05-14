@@ -54,6 +54,7 @@ export class ChatGateway
   ) {}
 
   afterInit(): void {
+    this.socketService.setChatServer(this.server);
     this.server.use(this.createAuthMiddleware());
   }
 
@@ -62,6 +63,8 @@ export class ChatGateway
       client.disconnect();
       return;
     }
+
+    void client.join(this.socketService.getUserRoom(client.userId));
 
     const conversationId = client.handshake?.auth?.conversationId as
       | string

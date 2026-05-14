@@ -6,6 +6,7 @@ import {
   NotificationJobName,
 } from '../constants/notification.constants';
 import type {
+  ChatFcmPushJobData,
   ReactionPushJobData,
   WidgetRefreshPushJobData,
 } from '../dto/push-notification.dto';
@@ -45,6 +46,26 @@ export class NotificationQueueService implements OnModuleDestroy {
       const message =
         error instanceof Error ? error.message : 'unknown enqueue error';
       this.logger.warn(`Failed to enqueue reaction push: ${message}`);
+    }
+  }
+
+  async addChatFcmJob(data: ChatFcmPushJobData): Promise<void> {
+    try {
+      const dedupeKey =
+        data.payload.type === 'NEW_CHAT_MESSAGE'
+          ? `chat-msg-${data.payload.messageId}-${data.recipientUserId}`
+          : `chat-react-${data.payload.messageId}-${data.recipientUserId}-${data.payload.emoji}`;
+      await this.queue.add(NotificationJobName.PUSH_CHAT_FCM, data, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        jobId: dedupeKey,
+        removeOnComplete: true,
+        removeOnFail: 100,
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'unknown enqueue error';
+      this.logger.warn(`Failed to enqueue chat FCM push: ${message}`);
     }
   }
 

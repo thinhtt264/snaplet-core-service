@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MessageRepository } from '../repositories/message.repository';
 import { ConversationService } from './conversation.service';
 import { ChatGateway } from '../gateway/chat.gateway';
@@ -32,6 +33,12 @@ import { ReadReceiptService } from './read-receipt.service';
 import { normalizeImageV1MediaKey } from '@common/utils/media-key.utils';
 import { MessageReactionRepository } from '../repositories/message-reaction.repository';
 import { UserService } from '@modules/users/services/user.service';
+import {
+  CHAT_MESSAGE_REACTED_EVENT,
+  CHAT_MESSAGE_SENT_EVENT,
+  ChatMessageReactedEvent,
+  ChatMessageSentEvent,
+} from '../events/chat-notification.events';
 
 type ReactionUserBasic = MessageReactionResponse['user'];
 type CachedMessageReaction = Omit<
@@ -51,6 +58,7 @@ export class MessageService {
     private readonly userService: UserService,
     private readonly gateway: ChatGateway,
     private readonly cacheService: CacheService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async send(dto: SendMessageDto, senderId: string): Promise<MessageResponse> {
@@ -111,6 +119,17 @@ export class MessageService {
       message.text ?? '',
       new Date(message.createdAt),
     );
+
+    if (recipientId !== senderId) {
+      const evt = new ChatMessageSentEvent();
+      evt.recipientUserId = recipientId;
+      evt.conversationId = message.conversationId;
+      evt.messageId = message.id;
+      evt.senderUserId = senderId;
+      evt.text = message.text ?? null;
+      evt.hasImage = message.media != null;
+      this.eventEmitter.emit(CHAT_MESSAGE_SENT_EVENT, evt);
+    }
 
     return message;
   }
@@ -196,6 +215,16 @@ export class MessageService {
       CHAT_MESSAGE_REACTION_UPDATED,
       payload,
     );
+
+    if (message.senderId !== userId) {
+      const evt = new ChatMessageReactedEvent();
+      evt.recipientUserId = message.senderId;
+      evt.conversationId = message.conversationId;
+      evt.messageId = messageId;
+      evt.reactorUserId = userId;
+      evt.emoji = normalizedEmoji;
+      this.eventEmitter.emit(CHAT_MESSAGE_REACTED_EVENT, evt);
+    }
 
     return reactions;
   }
