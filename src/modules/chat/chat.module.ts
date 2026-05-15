@@ -45,6 +45,7 @@ import { ChatMediaCleanupQueueService } from './queue/chat-media-cleanup.queue.s
     ChatMediaCleanupQueueService,
   ],
   exports: [
+    ChatGateway,
     ConversationService,
     MessageService,
     ChatMediaCleanupQueueService,

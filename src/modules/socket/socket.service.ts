@@ -4,7 +4,6 @@ const USER_ROOM_PREFIX = 'user:';
 
 /** Nest `@WebSocketServer()` is typed as Server but runtime value is Namespace. */
 type SocketNamespaceLike = {
-  adapter: { rooms: Map<string, Set<string>> };
   to(room: string): { emit(event: string, payload: unknown): void };
 };
 
@@ -12,44 +11,9 @@ type SocketNamespaceLike = {
 export class SocketService {
   private readonly logger = new Logger(SocketService.name);
   private rootServer: SocketNamespaceLike | null = null;
-  private chatServer: SocketNamespaceLike | null = null;
 
   setServer(server: unknown): void {
     this.rootServer = server as SocketNamespaceLike;
-  }
-
-  setChatServer(server: unknown): void {
-    this.chatServer = server as SocketNamespaceLike;
-  }
-
-  /**
-   * True if the user has at least one socket in `user:{userId}` on `/` or `/chat`.
-   */
-  isUserConnected(userId: string): boolean {
-    const roomName = this.getUserRoom(userId);
-    const rootSize = this.getRoomMemberCount(this.rootServer, roomName);
-    const chatSize = this.getRoomMemberCount(this.chatServer, roomName);
-    return rootSize > 0 || chatSize > 0;
-  }
-
-  /**
-   * Nest gateways inject a Namespace (`/` or `/chat`), not the root Server.
-   * Namespace: `adapter.rooms`; root Server: `sockets.adapter.rooms`.
-   * Using `namespace.sockets.adapter` throws because `sockets` is a Map.
-   */
-  private getRoomMemberCount(
-    server: SocketNamespaceLike | null,
-    roomName: string,
-  ): number {
-    if (!server) return 0;
-    try {
-      return server.adapter.rooms.get(roomName)?.size ?? 0;
-    } catch (err) {
-      this.logger.warn(
-        `Presence check failed room=${roomName}: ${(err as Error).message}`,
-      );
-      return 0;
-    }
   }
 
   /**

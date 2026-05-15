@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -14,12 +16,11 @@ import {
   NotificationType,
 } from '../constants/notification.constants';
 import type {
+  ChatFcmPushJobData,
   ReactionPushJobData,
   WidgetRefreshPushJobData,
 } from '../dto/push-notification.dto';
 import { FcmService } from '../services/fcm.service';
-import { SocketService } from '@modules/socket/socket.service';
-import type { ChatFcmPushJobData } from '../dto/push-notification.dto';
 import {
   serializePayload,
   type NewChatMessagePayload,
@@ -27,6 +28,7 @@ import {
 } from '../dto/fcm-payload.dto';
 import { UserService } from '@modules/users/services/user.service';
 import { ConversationRepository } from '@modules/chat/repositories/conversation.repository';
+import { ChatGateway } from '@modules/chat/gateway/chat.gateway';
 
 @Injectable()
 export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
@@ -38,7 +40,8 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
     private readonly fcmService: FcmService,
-    private readonly socketService: SocketService,
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway: ChatGateway,
     private readonly userRepository: UserRepository,
     private readonly userService: UserService,
     private readonly conversationRepository: ConversationRepository,
@@ -178,9 +181,14 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
   private async handleChatFcmPush(data: ChatFcmPushJobData): Promise<void> {
     const { recipientUserId, payload } = data;
 
-    if (this.socketService.isUserConnected(recipientUserId)) {
+    const inConversationRoom =
+      await this.chatGateway.isUserPresentInConversationRoom(
+        recipientUserId,
+        payload.conversationId,
+      );
+    if (inConversationRoom) {
       this.logger.debug(
-        `Skipping chat FCM: recipient ${recipientUserId} is online (socket)`,
+        `Skipping chat FCM: recipient ${recipientUserId} is in conv:${payload.conversationId} (/chat)`,
       );
       return;
     }
