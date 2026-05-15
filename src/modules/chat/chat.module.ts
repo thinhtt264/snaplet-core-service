@@ -26,7 +26,7 @@ import { ChatMediaCleanupQueueService } from './queue/chat-media-cleanup.queue.s
     UsersModule,
     RelationshipsModule,
     CommonJwtModule,
-    SocketModule,
+    forwardRef(() => SocketModule),
     StorageModule,
     forwardRef(() => NotificationsModule),
   ],

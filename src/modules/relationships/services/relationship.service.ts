@@ -45,7 +45,7 @@ export class RelationshipService {
   ) {
     this.cacheTtlSeconds = this.configService.get<number>(
       'relationships.cache.ttlSeconds',
-      3600, // default: 1 hour
+      36000, // default: 10 hours
     );
   }
 
