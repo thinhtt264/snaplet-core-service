@@ -241,6 +241,8 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       data: serializePayload(fcmPayload),
     });
 
+    this.logger.debug(`FCM send result: ${result.success}`);
+
     if (result.shouldDeleteToken) {
       await this.userRepository.updateFcmToken(recipientUserId, null);
     }
