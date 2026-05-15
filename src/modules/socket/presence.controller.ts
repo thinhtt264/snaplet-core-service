@@ -12,7 +12,7 @@ export class PresenceController {
     private readonly relationshipService: RelationshipService,
   ) {}
 
-  @Get('online-partners')
+  @Get('online-friends')
   async getOnlinePartners(@CurrentUserId() userId: string): Promise<string[]> {
     const friendIds = await this.relationshipService.getMyFriendIds(userId);
 
