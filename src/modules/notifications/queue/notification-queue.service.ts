@@ -4,12 +4,14 @@ import { RedisService } from '@common/redis/redis.service';
 import {
   NOTIFICATION_QUEUE_NAME,
   NotificationJobName,
+  NotificationType,
 } from '../constants/notification.constants';
 import type {
   ChatFcmPushJobData,
   ReactionPushJobData,
   WidgetRefreshPushJobData,
 } from '../dto/push-notification.dto';
+import { assertUnreachable } from '../utils/assert-unreachable.util';
 
 @Injectable()
 export class NotificationQueueService implements OnModuleDestroy {
@@ -51,10 +53,7 @@ export class NotificationQueueService implements OnModuleDestroy {
 
   async addChatFcmJob(data: ChatFcmPushJobData): Promise<void> {
     try {
-      const dedupeKey =
-        data.payload.type === 'NEW_CHAT_MESSAGE'
-          ? `chat-msg-${data.payload.messageId}-${data.recipientUserId}`
-          : `chat-react-${data.payload.messageId}-${data.recipientUserId}-${data.payload.emoji}`;
+      const dedupeKey = this.buildChatFcmJobId(data);
       await this.queue.add(NotificationJobName.PUSH_CHAT_FCM, data, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
@@ -88,5 +87,16 @@ export class NotificationQueueService implements OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     await this.queue.close();
     await this.connection.quit();
+  }
+
+  private buildChatFcmJobId(data: ChatFcmPushJobData): string {
+    const { recipientUserId, payload } = data;
+    switch (payload.type) {
+      case NotificationType.NEW_CHAT_MESSAGE:
+        return `chat-msg-${payload.messageId}-${recipientUserId}`;
+      case NotificationType.NEW_MESSAGE_REACTION:
+        return `chat-react-${payload.messageId}-${recipientUserId}-${payload.emoji}`;
+    }
+    return assertUnreachable(payload);
   }
 }

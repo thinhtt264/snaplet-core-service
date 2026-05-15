@@ -216,13 +216,13 @@ export class MessageService {
       payload,
     );
 
-    if (message.senderId !== userId) {
+    if (actorEmoji != null && message.senderId !== userId) {
       const evt = new ChatMessageReactedEvent();
       evt.recipientUserId = message.senderId;
       evt.conversationId = message.conversationId;
       evt.messageId = messageId;
       evt.reactorUserId = userId;
-      evt.emoji = normalizedEmoji;
+      evt.emoji = actorEmoji;
       this.eventEmitter.emit(CHAT_MESSAGE_REACTED_EVENT, evt);
     }
 

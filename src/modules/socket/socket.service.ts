@@ -2,9 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 
 const USER_ROOM_PREFIX = 'user:';
 
+/** Persisted on `socket.data` so `fetchSockets()` (incl. Redis adapter) can read userId. */
+export interface RootSocketData {
+  userId?: string;
+}
+
 /** Nest `@WebSocketServer()` is typed as Server but runtime value is Namespace. */
 type SocketNamespaceLike = {
   to(room: string): { emit(event: string, payload: unknown): void };
+  in(room: string): {
+    fetchSockets(): Promise<Array<{ data: RootSocketData }>>;
+  };
 };
 
 @Injectable()
@@ -37,5 +45,23 @@ export class SocketService {
 
   getUserRoom(userId: string): string {
     return `${USER_ROOM_PREFIX}${userId}`;
+  }
+
+  /**
+   * True if this user has at least one socket on `/` joined to `user:{userId}`.
+   */
+  async isUserPresentInUserRoom(userId: string): Promise<boolean> {
+    if (!this.rootServer) return false;
+
+    const room = this.getUserRoom(userId);
+    try {
+      const sockets = await this.rootServer.in(room).fetchSockets();
+      return sockets.some((remote) => remote.data.userId === userId);
+    } catch (err) {
+      this.logger.warn(
+        `User room presence check failed room=${room}: ${(err as Error).message}`,
+      );
+      return false;
+    }
   }
 }

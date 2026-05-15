@@ -9,7 +9,7 @@ import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { SocketService } from './socket.service';
+import { RootSocketData, SocketService } from './socket.service';
 import { SOCKET_USER_CONNECTED } from './events/socket-events';
 import type { UserConnectedEvent } from './events/socket-events';
 import { RedisService } from '@common/redis/redis.service';
@@ -114,6 +114,7 @@ export class SocketGateway
           return next(new Error('Unauthorized'));
         }
         socket.userId = userId;
+        (socket.data as RootSocketData).userId = userId;
         next();
       } catch {
         this.logger.warn('WS connection rejected: invalid token');

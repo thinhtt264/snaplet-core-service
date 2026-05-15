@@ -1,7 +1,9 @@
+import { NotificationType } from '../constants/notification.constants';
+
 export type FcmDataPayload = Record<string, string>;
 
 export interface NewChatMessagePayload {
-  type: 'NEW_CHAT_MESSAGE';
+  type: NotificationType.NEW_CHAT_MESSAGE;
   conversationId: string;
   messageId: string;
   senderName: string;
@@ -12,7 +14,7 @@ export interface NewChatMessagePayload {
 }
 
 export interface NewMessageReactionPayload {
-  type: 'NEW_MESSAGE_REACTION';
+  type: NotificationType.NEW_MESSAGE_REACTION;
   conversationId: string;
   messageId: string;
   reactorName: string;

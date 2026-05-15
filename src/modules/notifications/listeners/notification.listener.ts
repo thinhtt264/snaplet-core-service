@@ -27,7 +27,7 @@ export class NotificationListener {
       await this.notificationQueueService.addChatFcmJob({
         recipientUserId: event.recipientUserId,
         payload: {
-          type: 'NEW_CHAT_MESSAGE',
+          type: NotificationType.NEW_CHAT_MESSAGE,
           conversationId: event.conversationId,
           messageId: event.messageId,
           senderUserId: event.senderUserId,
@@ -49,7 +49,7 @@ export class NotificationListener {
       await this.notificationQueueService.addChatFcmJob({
         recipientUserId: event.recipientUserId,
         payload: {
-          type: 'NEW_MESSAGE_REACTION',
+          type: NotificationType.NEW_MESSAGE_REACTION,
           conversationId: event.conversationId,
           messageId: event.messageId,
           reactorUserId: event.reactorUserId,
