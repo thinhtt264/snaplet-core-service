@@ -99,8 +99,12 @@ export class SocketGateway
 
     setImmediate(() => {
       void (async () => {
-        await this.presenceService.setOffline(userId);
-        await this.broadcastPresence(userId, false);
+        const stillPresent =
+          await this.socketService.isUserPresentInUserRoom(userId);
+        if (!stillPresent) {
+          await this.presenceService.setOffline(userId);
+          await this.broadcastPresence(userId, false);
+        }
       })();
     });
   }
@@ -128,24 +132,14 @@ export class SocketGateway
     const event = isOnline ? PARTNER_ONLINE : PARTNER_OFFLINE;
     const payload = { userId } satisfies PartnerPresencePayload;
 
-    const presenceChecks = await Promise.all(
-      friendIds.map(async (friendId) => ({
-        friendId,
-        present: await this.socketService.isUserPresentInUserRoom(friendId),
-      })),
-    );
+    const onlineFriendIds =
+      await this.presenceService.filterOnlineUserIds(friendIds);
 
-    const targets = presenceChecks.filter((entry) => entry.present);
-
-    await Promise.all(
-      targets.map(({ friendId }) =>
-        Promise.resolve(
-          this.server
-            .to(this.socketService.getUserRoom(friendId))
-            .emit(event, payload),
-        ),
-      ),
-    );
+    for (const friendId of onlineFriendIds) {
+      this.server
+        .to(this.socketService.getUserRoom(friendId))
+        .emit(event, payload);
+    }
   }
 
   private createAuthMiddleware() {
