@@ -127,7 +127,7 @@ export class MessageService {
       evt.messageId = message.id;
       evt.senderUserId = senderId;
       evt.text = message.text ?? null;
-      evt.hasImage = message.media != null;
+      evt.hasImage = message.media?.status === 'AVAILABLE';
       this.eventEmitter.emit(CHAT_MESSAGE_SENT_EVENT, evt);
     }
 

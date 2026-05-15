@@ -57,6 +57,14 @@ export class MessageRepository {
       replyToId = null,
     } = params;
 
+    const storeKey =
+      mediaKey != null && mediaKey.trim() !== '' ? mediaKey.trim() : null;
+    const storeMime =
+      mimeType != null && mimeType.trim() !== '' ? mimeType.trim() : null;
+
+    const hasAttachment = storeKey != null || storeMime != null;
+    const mediaStatus = hasAttachment ? ('AVAILABLE' as const) : null;
+
     const inserted = await this.db
       .insert(schema.messages)
       .values({
@@ -64,12 +72,12 @@ export class MessageRepository {
         senderId,
         clientUuid,
         text,
-        mediaKey,
+        mediaKey: storeKey,
         mediaUrl,
-        mimeType,
+        mimeType: storeMime,
         width,
         height,
-        mediaStatus: 'AVAILABLE',
+        mediaStatus,
         replyToId,
       })
       .onConflictDoNothing()
@@ -285,15 +293,17 @@ export class MessageRepository {
     reply: typeof schema.messages.$inferSelect | null,
   ): MessageResponse {
     const isDeleted = !!message.deletedAt;
-    const mediaKey = isDeleted ? null : message.mediaKey;
-    const mediaUrl = isDeleted ? null : message.mediaUrl;
-    const hasMedia =
-      !isDeleted &&
-      (mediaKey != null ||
-        mediaUrl != null ||
-        message.mimeType != null ||
-        message.width != null ||
-        message.height != null);
+    const mediaKeyRaw = isDeleted ? null : message.mediaKey;
+    const mediaUrlRaw = isDeleted ? null : message.mediaUrl;
+    const mediaKey =
+      mediaKeyRaw != null && mediaKeyRaw.trim() !== ''
+        ? mediaKeyRaw.trim()
+        : null;
+    const mediaUrl =
+      mediaUrlRaw != null && mediaUrlRaw.trim() !== ''
+        ? mediaUrlRaw.trim()
+        : null;
+    const hasMedia = !isDeleted && (mediaKey != null || mediaUrl != null);
 
     let media: MessageResponse['media'] = null;
     if (hasMedia) {

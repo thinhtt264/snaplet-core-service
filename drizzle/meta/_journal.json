@@ -43,6 +43,13 @@
       "when": 1778214650922,
       "tag": "0006_messages_media_status",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778813508670,
+      "tag": "0006_tidy_vanisher",
+      "breakpoints": true
     }
   ]
 }

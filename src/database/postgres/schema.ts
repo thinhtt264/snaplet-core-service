@@ -50,7 +50,7 @@ export const messages = pgTable(
     mimeType: text('mime_type'),
     width: integer('width'),
     height: integer('height'),
-    mediaStatus: text('media_status').default('AVAILABLE').notNull(),
+    mediaStatus: text('media_status'),
     replyToId: uuid('reply_to_id').references(() => messages.id, {
       onDelete: 'set null',
     }),
