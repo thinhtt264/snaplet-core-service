@@ -19,6 +19,7 @@ import { CacheService } from '@modules/cache/cache.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import {
   CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
+  CHAT_CONV_RESTRICTED_CACHE_TTL_SECONDS,
   CONV_LAST_MESSAGE_CACHE_TTL_SECONDS,
   PARTNER_PROFILE_CACHE_TTL_SECONDS,
 } from '@common/constants/chat.constants';
@@ -156,6 +157,58 @@ export class ConversationService {
       () => this.conversationRepository.getMemberUserIds(convId),
       CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS,
     );
+  }
+
+  async isConversationRestricted(convId: string): Promise<boolean> {
+    return this.cacheService.getOrCompute(
+      REDIS_KEY_FEATURES.CHAT_CONV_RESTRICTED,
+      convId,
+      async () => {
+        const conv = await this.conversationRepository.findById(convId);
+        return conv?.isRestricted ?? false;
+      },
+      CHAT_CONV_RESTRICTED_CACHE_TTL_SECONDS,
+    );
+  }
+
+  async restrictConversation(
+    user1Id: string,
+    user2Id: string,
+  ): Promise<{ id: string } | null> {
+    const conv = await this.conversationRepository.restrictBetweenUsers(
+      user1Id,
+      user2Id,
+    );
+    if (!conv) return null;
+
+    // Write-through: warm cache immediately so next isConversationRestricted hits cache
+    await this.cacheService.set(
+      REDIS_KEY_FEATURES.CHAT_CONV_RESTRICTED,
+      conv.id,
+      true,
+      CHAT_CONV_RESTRICTED_CACHE_TTL_SECONDS,
+    );
+
+    return conv;
+  }
+
+  async unrestrictConversation(
+    user1Id: string,
+    user2Id: string,
+  ): Promise<{ id: string } | null> {
+    const conv = await this.conversationRepository.unrestrictBetweenUsers(
+      user1Id,
+      user2Id,
+    );
+    if (!conv) return null;
+
+    // Invalidate so next isConversationRestricted repopulates false from DB
+    await this.cacheService.invalidate(
+      REDIS_KEY_FEATURES.CHAT_CONV_RESTRICTED,
+      conv.id,
+    );
+
+    return conv;
   }
 
   async deleteConversation(convId: string): Promise<void> {
@@ -352,6 +405,7 @@ export class ConversationService {
       id: string;
       createdAt: Date;
       lastMessageAt: Date | null;
+      isRestricted: boolean;
       syncUpdatedAt: Date;
     },
     partnerId: string | null,
@@ -388,6 +442,7 @@ export class ConversationService {
       lastMessage,
       myLastSeenAt,
       partnerLastSeenAt,
+      isRestricted: conversation.isRestricted,
       syncUpdatedAt: conversation.syncUpdatedAt,
       createdAt: conversation.createdAt,
     };

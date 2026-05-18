@@ -1,9 +1,12 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AppException } from '@common/exception/AppException';
+import { ErrorCode } from '@common/constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MessageRepository } from '../repositories/message.repository';
 import { ConversationService } from './conversation.service';
@@ -80,10 +83,20 @@ export class MessageService {
       );
     }
 
-    const normalizedMediaKey = normalizeImageV1MediaKey(mediaKey);
-
     const { id: conversationId } =
       await this.conversationService.findOrCreateDirect(senderId, recipientId);
+
+    const isRestricted =
+      await this.conversationService.isConversationRestricted(conversationId);
+    if (isRestricted) {
+      throw new AppException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.CONVERSATION_RESTRICTED,
+        'Conversation is restricted',
+      );
+    }
+
+    const normalizedMediaKey = normalizeImageV1MediaKey(mediaKey);
 
     const message = await this.messageRepository.insertMessage({
       conversationId,

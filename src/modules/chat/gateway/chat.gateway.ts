@@ -22,7 +22,6 @@ import {
   type ChatServerEvent,
 } from '../events/chat-socket-events';
 import { TypingService } from '../services/typing.service';
-import { ReadReceiptService } from '../services/read-receipt.service';
 import { ConversationService } from '../services/conversation.service';
 import { SocketService } from '@modules/socket/socket.service';
 
@@ -54,8 +53,6 @@ export class ChatGateway
     private readonly socketService: SocketService,
     @Inject(forwardRef(() => TypingService))
     private readonly typingService: TypingService,
-    @Inject(forwardRef(() => ReadReceiptService))
-    private readonly readReceiptService: ReadReceiptService,
   ) {}
 
   afterInit(): void {

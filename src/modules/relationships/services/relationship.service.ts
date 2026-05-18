@@ -30,6 +30,8 @@ import { FRIEND_REQUEST_UPDATED_EVENT } from '@modules/socket/events/socket-even
 import {
   RELATIONSHIP_DELETED_EVENT,
   RelationshipDeletedEvent,
+  RELATIONSHIP_ACCEPTED_EVENT,
+  RelationshipAcceptedEvent,
 } from '../events/relationship-events';
 @Injectable()
 export class RelationshipService {
@@ -435,6 +437,13 @@ export class RelationshipService {
       updatedRelationship.user1Id.toString(),
       updatedRelationship.user2Id.toString(),
     );
+
+    if (status === RelationshipStatus.ACCEPTED) {
+      this.eventEmitter.emit(RELATIONSHIP_ACCEPTED_EVENT, {
+        user1Id: updatedRelationship.user1Id.toString(),
+        user2Id: updatedRelationship.user2Id.toString(),
+      } as RelationshipAcceptedEvent);
+    }
 
     return {
       id: updatedRelationship._id.toString(),

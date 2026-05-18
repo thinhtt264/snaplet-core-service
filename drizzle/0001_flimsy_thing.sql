@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "is_restricted" boolean DEFAULT false NOT NULL;
