@@ -1,7 +1,7 @@
 const COMMON_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
 
 export default () => ({
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv: process.env.NODE_ENV || 'staging',
   port: parseInt(process.env.PORT || '3000', 10),
   apiPrefix: process.env.API_PREFIX || '',
 
