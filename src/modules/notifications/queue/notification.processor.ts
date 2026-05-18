@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -14,10 +16,20 @@ import {
   NotificationType,
 } from '../constants/notification.constants';
 import type {
+  ChatFcmJobPayload,
+  ChatFcmPushJobData,
   ReactionPushJobData,
   WidgetRefreshPushJobData,
 } from '../dto/push-notification.dto';
 import { FcmService } from '../services/fcm.service';
+import {
+  serializePayload,
+  type ChatNotificationPayload,
+} from '../dto/fcm-payload.dto';
+import { UserService } from '@modules/users/services/user.service';
+import { ConversationRepository } from '@modules/chat/repositories/conversation.repository';
+import { ChatGateway } from '@modules/chat/gateway/chat.gateway';
+import { assertUnreachable } from '../utils/assert-unreachable.util';
 
 @Injectable()
 export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
@@ -29,7 +41,11 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
     private readonly fcmService: FcmService,
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway: ChatGateway,
     private readonly userRepository: UserRepository,
+    private readonly userService: UserService,
+    private readonly conversationRepository: ConversationRepository,
   ) {
     this.connection = this.redisService.getClient().duplicate();
   }
@@ -80,6 +96,9 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         await this.handleWidgetRefreshPush(
           job.data as WidgetRefreshPushJobData,
         );
+        return;
+      case NotificationJobName.PUSH_CHAT_FCM:
+        await this.handleChatFcmPush(job.data as ChatFcmPushJobData);
         return;
       default:
         this.logger.warn(`Unknown notification job: ${String(job.name)}`);
@@ -160,6 +179,113 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async handleChatFcmPush(data: ChatFcmPushJobData): Promise<void> {
+    const { recipientUserId, payload } = data;
+
+    const inConversationRoom =
+      await this.chatGateway.isUserPresentInConversationRoom(
+        recipientUserId,
+        payload.conversationId,
+      );
+    if (inConversationRoom) {
+      this.logger.debug(
+        `Skipping chat FCM (${payload.type}): recipient ${recipientUserId} is in conv:${payload.conversationId} (/chat)`,
+      );
+      return;
+    }
+
+    if (payload.type === NotificationType.NEW_CHAT_MESSAGE) {
+      const alreadyRead =
+        await this.conversationRepository.hasRecipientReadMessage(
+          payload.conversationId,
+          recipientUserId,
+          payload.messageId,
+        );
+      if (alreadyRead) {
+        this.logger.debug(
+          `Skipping chat FCM (NEW_CHAT_MESSAGE): recipient ${recipientUserId} already read message ${payload.messageId}`,
+        );
+        return;
+      }
+    }
+
+    const fcmToken = await this.userRepository.findFcmToken(recipientUserId);
+    if (!fcmToken) {
+      this.logger.debug(
+        `No FCM token for user ${recipientUserId}, skipping chat FCM push`,
+      );
+      return;
+    }
+
+    const actorUserId = this.resolveChatActorUserId(payload);
+    const actor = await this.userRepository.findActiveById(actorUserId);
+    const actorName = this.resolveDisplayName(actor);
+    const actorAvatarUrl = actor
+      ? this.userService.getAvatarUrlsForKey(actor.avatarKey, {
+          sizes: [],
+        }).original
+      : '';
+    const fcmPayload = this.buildChatFcmPayload(
+      payload,
+      actorName,
+      actorAvatarUrl,
+    );
+
+    const result = await this.fcmService.sendPush({
+      token: fcmToken,
+      title: '',
+      body: '',
+      data: serializePayload(fcmPayload),
+    });
+
+    this.logger.debug(`FCM send result: ${result.success}`);
+
+    if (result.shouldDeleteToken) {
+      await this.userRepository.updateFcmToken(recipientUserId, null);
+    }
+  }
+
+  private resolveChatActorUserId(payload: ChatFcmJobPayload): string {
+    switch (payload.type) {
+      case NotificationType.NEW_CHAT_MESSAGE:
+        return payload.senderUserId;
+      case NotificationType.NEW_MESSAGE_REACTION:
+        return payload.reactorUserId;
+      default:
+        return assertUnreachable(payload);
+    }
+  }
+
+  private buildChatFcmPayload(
+    payload: ChatFcmJobPayload,
+    actorName: string,
+    actorAvatarUrl: string,
+  ): ChatNotificationPayload {
+    switch (payload.type) {
+      case NotificationType.NEW_CHAT_MESSAGE:
+        return {
+          type: NotificationType.NEW_CHAT_MESSAGE,
+          conversationId: payload.conversationId,
+          messageId: payload.messageId,
+          senderName: actorName,
+          senderAvatarUrl: actorAvatarUrl,
+          ...(payload.text ? { text: payload.text.slice(0, 100) } : {}),
+          hasImage: String(payload.hasImage),
+        };
+      case NotificationType.NEW_MESSAGE_REACTION:
+        return {
+          type: NotificationType.NEW_MESSAGE_REACTION,
+          conversationId: payload.conversationId,
+          messageId: payload.messageId,
+          reactorName: actorName,
+          reactorAvatarUrl: actorAvatarUrl,
+          emoji: payload.emoji,
+        };
+      default:
+        return assertUnreachable(payload);
+    }
+  }
+
   private buildNotificationData(
     type: NotificationType,
     context: { postId: string; actorAvatarUrl: string },
@@ -175,5 +301,19 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
           actorAvatarUrl: context.actorAvatarUrl,
         };
     }
+  }
+
+  private resolveDisplayName(
+    user: {
+      firstName: string;
+      lastName: string;
+      username: string | null;
+    } | null,
+  ): string {
+    if (!user) return 'Someone';
+    const full = `${user.firstName} ${user.lastName}`.trim();
+    if (full) return full;
+    if (user.username) return user.username;
+    return 'Someone';
   }
 }

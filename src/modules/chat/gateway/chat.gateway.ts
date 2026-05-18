@@ -26,6 +26,11 @@ import { ReadReceiptService } from '../services/read-receipt.service';
 import { ConversationService } from '../services/conversation.service';
 import { SocketService } from '@modules/socket/socket.service';
 
+/** Persisted on `socket.data` so `fetchSockets()` (incl. Redis adapter) can read userId. */
+export interface ChatSocketData {
+  userId?: string;
+}
+
 @Injectable()
 @WebSocketGateway({
   namespace: '/chat',
@@ -63,6 +68,8 @@ export class ChatGateway
       return;
     }
 
+    void client.join(this.socketService.getUserRoom(client.userId));
+
     const conversationId = client.handshake?.auth?.conversationId as
       | string
       | undefined;
@@ -79,7 +86,7 @@ export class ChatGateway
         client.disconnect();
         return;
       }
-      void client.join(`conv:${conversationId}`);
+      void client.join(this.getConversationSocketRoom(conversationId));
     }
 
     this.logger.debug(
@@ -104,7 +111,7 @@ export class ChatGateway
       client.emit('error', { message: 'Not a member of this conversation' });
       return;
     }
-    client.join(`conv:${payload.conversationId}`);
+    client.join(this.getConversationSocketRoom(payload.conversationId));
   }
 
   @SubscribeMessage(CHAT_LEAVE_CONVERSATION)
@@ -112,7 +119,7 @@ export class ChatGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { conversationId: string },
   ): void {
-    client.leave(`conv:${payload.conversationId}`);
+    client.leave(this.getConversationSocketRoom(payload.conversationId));
   }
 
   @SubscribeMessage(CHAT_TYPING_START)
@@ -142,9 +149,35 @@ export class ChatGateway
     payload: unknown,
     excludeSocketId?: string,
   ): void {
-    const room = this.server.to(`conv:${convId}`);
+    const room = this.server.to(this.getConversationSocketRoom(convId));
     const target = excludeSocketId ? room.except(excludeSocketId) : room;
     target.emit(event, payload);
+  }
+
+  /**
+   * True if this user has at least one `/chat` socket joined to `conv:{conversationId}`
+   * (same room as `CHAT_JOIN_CONVERSATION` / handshake `conversationId`).
+   */
+  async isUserPresentInConversationRoom(
+    userId: string,
+    conversationId: string,
+  ): Promise<boolean> {
+    const room = this.getConversationSocketRoom(conversationId);
+    try {
+      const sockets = await this.server.in(room).fetchSockets();
+      return sockets.some(
+        (remote) => (remote.data as ChatSocketData).userId === userId,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Conversation presence check failed room=${room}: ${(err as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  private getConversationSocketRoom(conversationId: string): string {
+    return `conv:${conversationId}`;
   }
 
   private createAuthMiddleware() {
@@ -187,6 +220,7 @@ export class ChatGateway
         }
 
         socket.userId = userId;
+        (socket.data as ChatSocketData).userId = userId;
         next();
       } catch {
         this.logger.warn('Chat WS connection rejected: invalid token');

@@ -33,3 +33,10 @@ export interface ConversationUpdatedPayload {
 export interface ConversationDeletedPayload {
   conversationId: string;
 }
+
+export const PARTNER_ONLINE = 'partner_online';
+export const PARTNER_OFFLINE = 'partner_offline';
+
+export interface PartnerPresencePayload {
+  userId: string;
+}

@@ -251,4 +251,59 @@ export class ConversationRepository {
 
     return { messageCreatedAt: row.messageCreatedAt };
   }
+
+  /**
+   * True if `recipientUserId`'s last-read pointer is at or past `messageId`
+   * in conversation timeline (same ordering as message cursor: createdAt DESC, id DESC).
+   * Used to skip FCM when the user already saw the message while online.
+   */
+  async hasRecipientReadMessage(
+    convId: string,
+    recipientUserId: string,
+    messageId: string,
+  ): Promise<boolean> {
+    const conv = await this.findById(convId);
+    if (!conv) return false;
+
+    const lastReadMsgId =
+      conv.userA === recipientUserId
+        ? conv.userALastReadMsgId
+        : conv.userB === recipientUserId
+          ? conv.userBLastReadMsgId
+          : null;
+
+    if (!lastReadMsgId) return false;
+    if (lastReadMsgId === messageId) return true;
+
+    const rows = await this.db
+      .select({
+        id: schema.messages.id,
+        createdAt: schema.messages.createdAt,
+      })
+      .from(schema.messages)
+      .where(
+        and(
+          eq(schema.messages.conversationId, convId),
+          inArray(schema.messages.id, [lastReadMsgId, messageId]),
+        ),
+      );
+
+    const pointer = rows.find((r) => r.id === lastReadMsgId);
+    const target = rows.find((r) => r.id === messageId);
+    if (!pointer || !target) return false;
+
+    return this.lastReadCoversTarget(pointer, target);
+  }
+
+  /** Pointer message is same or newer than target → user has seen target. */
+  private lastReadCoversTarget(
+    pointer: { createdAt: Date; id: string },
+    target: { createdAt: Date; id: string },
+  ): boolean {
+    const pt = pointer.createdAt.getTime();
+    const tt = target.createdAt.getTime();
+    if (pt > tt) return true;
+    if (pt < tt) return false;
+    return pointer.id >= target.id;
+  }
 }

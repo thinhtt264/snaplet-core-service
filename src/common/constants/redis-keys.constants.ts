@@ -31,3 +31,6 @@ export const REDIS_KEY_FEATURES = {
 
 export type RedisKeyFeature =
   (typeof REDIS_KEY_FEATURES)[keyof typeof REDIS_KEY_FEATURES];
+
+/** WS presence flag — value `"1"`, TTL refreshed on connect and engine heartbeat. */
+export const userPresenceKey = (userId: string): string => `presence:${userId}`;
