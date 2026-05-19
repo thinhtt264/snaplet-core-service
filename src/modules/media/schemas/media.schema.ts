@@ -19,7 +19,7 @@ export class Media extends AbstractDocument {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   ownerId: Types.ObjectId;
 
-  @Prop({ required: true, enum: ALLOWED_IMAGE_MIME_TYPES })
+  @Prop({ required: true, type: String, enum: ALLOWED_IMAGE_MIME_TYPES })
   mimeType: ImageMimeType;
 
   @Prop()
@@ -27,6 +27,12 @@ export class Media extends AbstractDocument {
 
   @Prop()
   duration?: number; // video
+
+  @Prop({ required: true, min: 1 })
+  width: number;
+
+  @Prop({ required: true, min: 1 })
+  height: number;
 
   @Prop({ required: true, type: Object })
   transform: ImageTransform;

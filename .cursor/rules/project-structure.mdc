@@ -6,141 +6,127 @@ alwaysApply: false
 
 # Project Structure & Context
 
-This repository is a **NestJS + TypeScript backend** using **MongoDB (Mongoose)**, **Redis**, and **Socket.IO (WebSockets)**, organized into feature-based modules under `src/modules`.
+This repository is a **NestJS + TypeScript backend** using **MongoDB (Mongoose)** as the primary document store, **PostgreSQL via Drizzle ORM** for chat persistence, **Redis** (cache, sessions, queues), **BullMQ** for background jobs, **Firebase Admin** for push, and **Socket.IO** (Redis adapter) for real-time. Feature code lives under `src/modules`.
+
+**Path aliases** (`tsconfig.json`): `@common/*`, `@config/*`, `@database/*`, `@modules/*`, `@infrastructure/*`.
 
 ## Core Entry Points
 
-- `main.ts`
-  - Boots Nest app with `AppModule`.
+- `src/main.ts`
+  - Boots Nest with `AppModule`.
   - Security: `helmet()`.
-  - CORS from `configService.get('cors.origin')`.
-  - Sets global API prefix from `configService.get('apiPrefix')`.
-  - Registers a global `ValidationPipe` (whitelist, forbidNonWhitelisted, transform + implicit conversion).
-  - Configures WebSocket adapter via `createRedisSocketIoAdapter(app)`.
+  - CORS from `configService.get('cors.origin')`, `credentials: true`.
+  - Global API prefix from `configService.get('apiPrefix')`.
+  - Global `ValidationPipe` (whitelist, `forbidNonWhitelisted`, transform + implicit conversion).
+  - WebSocket adapter: `createRedisSocketIoAdapter(app)` from `@modules/socket/redis-socket.io-adapter`.
 
-- `app.module.ts`
-  - Root module wiring infrastructure + feature modules:
-    - Config: `ConfigModule.forRoot` (loads `@config/configuration`, uses `.env`).
-    - Infra: `DatabaseModule`, `RedisModule`, `CacheModule`, `CommonJwtModule`.
-    - Cross-cutting: `ScheduleModule`, `ThrottlerModule`, `EventEmitterModule`.
-    - Features: `AuthModule`, `HealthModule`, `MediaModule`, `PostsModule`, `RelationshipsModule`, `SocketModule`.
+- `src/app.module.ts`
+  - Config: `ConfigModule.forRoot` — loads `@config/configuration`, `.env`, validates with `@config/validation.schema`.
+  - Infra: `DatabaseModule` (Mongo), **`PostgresModule`** (Drizzle), `RedisModule`, `CacheModule`, `CommonJwtModule`.
+  - Cross-cutting: `ScheduleModule`, `ThrottlerModule`, `EventEmitterModule`.
+  - Features: **`AuthModule`**, **`HealthModule`**, **`MediaModule`**, **`PostsModule`**, **`RelationshipsModule`**, **`SocketModule`**, **`NotificationsModule`**, **`ChatModule`**.
+  - **`UsersModule`** is not imported at the root; it is pulled in by **`AuthModule`**, **`NotificationsModule`**, **`ChatModule`**, and **`PostsModule`** (via its own imports).
   - Global concerns:
-    - Guards: `FingerprintGuard` as `APP_GUARD`.
-    - Filters: `HttpExceptionFilter`, `DeviceRegistrationCleanupFilter`.
+    - Guard: `FingerprintGuard` as `APP_GUARD`.
+    - Filter: `HttpExceptionFilter` as `APP_FILTER` (uses **`DeviceRegistrationCleanupFilter`** internally for device-registration cleanup).
     - Interceptors: `LoggingInterceptor`, `TransformInterceptor`.
 
 ## Shared Infrastructure
 
 - `src/config/*`
-  - `configuration.ts` defines all config values (port, CORS, throttle, JWT, storage, DB).
-  - `validation.schema.ts` validates environment variables.
-  - **When adding new env-based behavior, extend `configuration.ts` and the validation schema instead of using `process.env` directly.**
+  - `configuration.ts` — typed config (API prefix, CORS, throttle, JWT, Mongo, **Postgres URL**, storage, Firebase, BullMQ, etc.).
+  - `validation.schema.ts` — Joi validation for environment variables.
+  - **Prefer extending these instead of reading `process.env` directly.**
 
 - `src/database/*`
-  - `database.module.ts` configures MongoDB/Mongoose.
-  - `abstract.schema.ts` defines `AbstractDocument` with common fields (`_id`, `createdAt`, `updatedAt`, `isDeleted`, etc.).
-  - All Mongoose schemas (`User`, `Post`, `Media`, `Relationship`, etc.) extend `AbstractDocument` and rely on timestamp/index conventions.
+  - `database.module.ts` — MongoDB / Mongoose connection.
+  - `abstract.schema.ts` — **`AbstractDocument`** base (`createdAt`, `updatedAt`, `isDeleted`, …); domain schemas extend this unless they use a different pattern.
+  - **`postgres/`** — **`PostgresModule`**, **`drizzleProvider`** (`DRIZZLE_CLIENT`), **`schema.ts`** (Drizzle tables). Used by chat repositories. Migration helpers: root `package.json` scripts **`db:generate`** / **`db:migrate`** (drizzle-kit).
 
 - `src/common/*`
-  - `types/*`: generic types for API responses, pagination, images, MIME types, fingerprints, and request metadata.
-  - `utils/*`: helpers for dates, Redis keys/operations, fingerprints, and common logic.
-  - `constants/*`: regex patterns, Redis key templates (`redis-keys.constants.ts` includes feature keys such as post unread/session activity and **post reactions actor-list cache**), `user-profile.constants.ts` (**max length** for username, first name, last name across API + persistence), and other shared constants.
-  - `validators/*`: custom `class-validator` decorators (email, username — **no spaces**, letters/numbers/underscores only — image MIME, etc.).
-  - `decorators/*`: `@CurrentUser`, header helpers, API response decorators.
-  - `guards/*`: JWT auth, device fingerprint, and device-daily-limit guards.
-  - `interceptors/*`: centralized logging and response transformation.
-  - `filters/*`: `http-exception.filter.ts` and `device-registration-cleanup.filter.ts`.
-  - `jwt/*`: shared JWT module and strategy.
-  - `redis/*`: Redis module/service and helpers.
+  - `types/*` — API responses, pagination, images, fingerprints, request metadata, **`chat-cursor.types`** (chat message cursors), etc.
+  - `utils/*` — dates, Redis keys, fingerprints, **`media-key.utils`**, shared helpers.
+  - `constants/*` — regex, Redis key templates (posts unread, reactions, sessions, …), **`user-profile.constants.ts`**, **`chat.constants.ts`**, etc.
+  - `validators/*` — custom `class-validator` decorators.
+  - `decorators/*` — `@CurrentUser` / `@CurrentUserId`, headers, API response decorators.
+  - `guards/*` — JWT, fingerprint, device daily limit.
+  - `interceptors/*`, `filters/*`, `jwt/*`, `redis/*`, `exception/*`.
 
 - `src/infrastructure/*`
-  - External integrations shared across features.
-  - Currently `storage/*` (R2): encapsulates `storage.module.ts` / `storage.service.ts` and is imported by media-post related modules.
+  - **`storage/`** — `StorageModule`, R2/S3-compatible uploads (`r2/*`); consumed by media and features that need object storage (e.g. chat media cleanup).
 
 ## Feature Modules (Domain Logic)
 
-Feature modules live under `src/modules` and typically follow:
-- `*.module.ts`: Nest wiring + `MongooseModule.forFeature` for local schemas.
-- HTTP endpoints: `controllers/*`.
-- Business logic: `services/*`.
-- Persistence/DB access: `repositories/*` (when needed; controllers should not access Mongoose models directly).
-- Domain models: `schemas/*`.
-- Contracts: `dto/*` and `interfaces/*`.
-- Integrations: domain `events/*` + `listeners/*` (EventEmitter) and/or background `queue/*` + processors.
+Convention: `*.module.ts`, then **`controllers/`**, **`services/`**, **`repositories/`** (Mongo or Drizzle), **`schemas/`** (Mongoose), **`dto/`**, **`interfaces/`**, optional **`events/`**, **`listeners/`**, **`queue/`**, **`processors/`**, **`gateway/`** for WebSockets.
 
-Real-time note: WebSockets use `src/modules/socket/*` (gateway/service/events), not HTTP controllers.
+### `src/modules/auth`
 
-- `src/modules/auth`
-  - `auth.controller.ts`: register/login/refresh token + username/email checks.
-  - `auth.service.ts`: auth logic, token generation, device/session rules.
-  - `repositories/refresh-token.repository.ts`: persistence for refresh tokens.
-  - `dto/*`: request DTOs for auth flows; **register** and **check-username** enforce **max length** on username (and first/last name on register) via shared `USER_PROFILE_FIELD_MAX_LENGTH`.
-  - `interfaces/*`: response contracts.
+- `auth.controller.ts` — register/login/refresh, Google sign-in, username/email checks.
+- `auth.service.ts` — auth flows, tokens, device rules.
+- `repositories/refresh-token.repository.ts` — exports **`AuthRepository`** (refresh tokens and active session metadata in **Redis**).
+- `dto/*`, `interfaces/*`.
 
-- `src/modules/users`
-  - `users.controller.ts`: user profile and settings endpoints.
-  - `user.service.ts`: main user operations.
-  - `user-validation.service.ts`: username/email validation and checks.
-  - `user.repository.ts`: Mongo access for `User` and related documents.
-  - `schemas/user.schema.ts`, `user-fingerprint.schema.ts`: user and device fingerprint schemas.
-  - `dto/*` & `interfaces/*`: DTOs and shaped response types.
+### `src/modules/users`
 
-- `src/modules/media`
-  - `media.module.ts`: wires media persistence + `StorageModule` for external storage.
-  - `controllers/media.controller.ts`: media upload/confirm/batch endpoints.
-  - `media.service.ts`: media lifecycle, integration with storage and cleanup.
-  - `media-cleanup.service.ts`: scheduled/background cleanup jobs.
-  - `repositories/media.repository.ts`: Mongo access for media.
-  - `schemas/media.schema.ts`: owner, mime type, key, duration, transforms, status.
-  - `dto/*`, `interfaces/*`: upload/confirm DTOs and repository/response contracts.
-  - Uses `StorageModule` and R2 storage (`infrastructure/storage/r2/*`).
+- `controllers/users.controller.ts` — profile, settings, search, onboarding-related endpoints.
+- `services/user.service.ts`, `services/user-validation.service.ts`.
+- `repositories/user.repository.ts`.
+- `schemas/user.schema.ts`, `schemas/user-fingerprint.schema.ts`.
+- Imports **`Relationship`** schema for queries that need relationship context.
 
-- `src/modules/posts`
-  - `posts.module.ts`: providers include `PostService`, unread services, unread queue (service + processor), **`PostReactionRepository`**, and listeners (**`UserConnectedListener`**, **`PostEventListener`**, **`RelationshipEventListener`**).
-  - `controllers/post.controller.ts`: create post, fetch feed, delete post (**`PostIdParamDto`**), and **post reactions**: **`PATCH :postId/reactions`** (throttled), **`DELETE :postId/reactions`**, **`GET :postId/reactions`** (owner-only actor list; no aggregate counts in contract).
-  - `services/post.service.ts`: main posts business logic, integrates with `PostRepository`, `MediaService`, `RelationshipService`, and **reaction** flows via `PostReactionRepository` + **`CacheService`** (Redis key feature **`POST_REACTIONS_CACHE`**; invalidation on mutations and on relationship teardown).
-  - `repositories/post.repository.ts`:
-    - Mongo aggregation for feed, joining users and media.
-    - **Cursor-based pagination uses a compound cursor on `createdAt` + `_id`**, encoded/decoded in `types/feed-cursor.types.ts`.
-  - `repositories/post-reaction.repository.ts`: upsert/remove reactions, owner actor aggregation with `$lookup` to `users`, delete reactions by post or **between two users** (used when a friendship ends).
-  - `schemas/post.schema.ts`: post structure and indexes, including compound indexes on `{ userId, createdAt, _id }` to support feed queries.
-  - `schemas/post-reaction.schema.ts`: **`post_reactions`** collection; unique index on `(postId, reactorUserId)`; reaction icon stored with trim/maxlength at schema level.
-  - `constants/*`: e.g. **`DEFAULT_CACHE_POST_TTL`** for shared post-related cache TTLs, **`post-reaction.constants`** for reaction history limits in storage pipeline.
-  - `dto/*`, `interfaces/*`: create/get posts DTOs, **`react-to-post.dto`**, post/reaction typed responses.
-  - `queue/*`: background processing for unread state updates (mark-seen, delete effects).
-  - `listeners/*` / `events/*`: unread/session logic via EventEmitter; **`RelationshipEventListener`** reacts to **`RELATIONSHIP_DELETED_EVENT`** by removing cross-user reactions and invalidating reaction caches for impacted posts.
+### `src/modules/media`
 
-- `src/modules/relationships`
-  - `relationships.module.ts`
-  - `controllers/relationship.controller.ts`: follow/unfollow and relationship queries.
-  - `services/relationship.service.ts`: managing relationships and friend visibility.
-  - `repositories/relationship.repository.ts`: Mongo access for relationships.
-  - `schemas/relationship.schema.ts`, `dto/*`, `interfaces/*`: schema, DTOs, response contracts.
-  - Used heavily by posts feed visibility logic (e.g., friend-only posts).
+- Upload/presign/confirm/batch flows, **`StorageModule`**, cleanup jobs.
+- `schemas/media.schema.ts`, `repositories/media.repository.ts`.
 
-- `src/modules/cache`
-  - `cache.module.ts`, `cache.service.ts`: caching helpers built on top of Redis.
-  - Includes utilities like pattern-based key invalidation and Redis `SCAN` loops.
+### `src/modules/posts`
 
-- `src/modules/health`
-  - Basic health checks for infrastructure (DB, Redis, etc.).
+- **`posts.module.ts`** imports **`MediaModule`**, **`RelationshipsModule`**, **`UsersModule`**, **`StorageModule`**, **`NotificationsModule`**, **`ChatModule`**.
+- `controllers/post.controller.ts` — feed (cursor-based), create/delete post, unread/mark-seen, **post reactions** (patch/delete/get).
+- `services/post.service.ts` — core post logic, reactions (via **`PostReactionRepository`** + **`CacheService`**), integrations with media/relationships/notifications/chat as needed.
+- **`services/post-audience.service.ts`**, **`services/post-unread.service.ts`** — audience rules and unread pipeline.
+- `repositories/post.repository.ts` — aggregations, feed; **compound cursor** on `createdAt` + `_id` (see `types/feed-cursor.types.ts`).
+- `repositories/post-reaction.repository.ts`, `schemas/post.schema.ts`, `schemas/post-reaction.schema.ts`.
+- `queue/*` — **`PostsUnreadQueueService`** + **`PostsUnreadProcessor`** for unread/async side effects.
+- `listeners/*` — **`UserConnectedListener`**, **`PostEventListener`**, **`RelationshipEventListener`** (e.g. relationship teardown → reaction cleanup / cache invalidation).
 
-- `src/modules/socket`
-  - `socket.module.ts`: global Socket.IO wiring (gateway/service exports).
-  - `socket.gateway.ts`: authenticates WS connections (token -> `userId`), joins per-user rooms, emits typed WS events on connect.
-  - `socket.service.ts`: manages the server instance and room mapping.
-  - `events/socket-events.ts`: socket event names and payload types.
-  - `redis-socket.io-adapter.ts`: Redis-backed Socket.IO adapter used by `main.ts`.
+### `src/modules/relationships`
+
+- Follow/unfriend/block semantics, feeds visibility; `schemas/relationship.schema.ts`, `repositories/relationship.repository.ts`.
+
+### `src/modules/cache`
+
+- `cache.service.ts` — tag/pattern invalidation, Redis `SCAN`, built on **`RedisModule`**.
+
+### `src/modules/health`
+
+- Liveness/readiness style checks for dependencies.
+
+### `src/modules/socket`
+
+- **`socket.gateway.ts`**, **`socket.service.ts`**, **`events/socket-events.ts`**, **`redis-socket.io-adapter.ts`** — shared Socket.IO server used by **`main.ts`** and feature gateways.
+
+### `src/modules/notifications`
+
+- **`services/fcm.service.ts`** — Firebase Cloud Messaging.
+- **`queue/notification-queue.service.ts`**, **`queue/notification.processor.ts`** — BullMQ worker for outbound pushes.
+- **`listeners/notification.listener.ts`** — reacts to domain events via **`EventEmitter`**.
+- Imports **`UsersModule`** for user/device context.
+
+### `src/modules/chat`
+
+- **`PostgresModule`** + Drizzle repositories: **`conversation.repository.ts`**, **`message.repository.ts`**, **`message-reaction.repository.ts`**.
+- HTTP: **`controllers/chat.controller.ts`** (conversations), **`controllers/message.controller.ts`** (messages, reactions, read receipts).
+- Real-time: **`gateway/chat.gateway.ts`**; event names/payloads in **`events/chat-socket-events.ts`**.
+- Services: **`conversation.service.ts`**, **`message.service.ts`**, **`typing.service.ts`**, **`read-receipt.service.ts`**.
+- Background: **`processors/chat-archive.processor.ts`**, **`processors/chat-media-cleanup.processor.ts`**, **`queue/chat-media-cleanup.queue.service.ts`** (BullMQ + R2 cleanup via **`StorageModule`**).
+- DTOs for pagination often align with **`@common/types/chat-cursor.types`**.
+- Imports **`UsersModule`**, **`RelationshipsModule`**, **`SocketModule`**, **`StorageModule`**, **`CommonJwtModule`**.
 
 ## Conventions When Adding New Code
 
-- Prefer adding new domain logic as a **module under `src/modules`** with:
-  - `*.module.ts`
-  - HTTP: `controllers/*`
-  - Real-time (if needed): `gateway` (e.g. `socket.gateway.ts`)
-  - `services/*`, optional `repositories/*`
-  - `schemas/*`, `dto/*`, and `interfaces/*`
-- Reuse **common types, utils, validators, and decorators** where possible instead of duplicating logic.
-- For data access, follow the pattern: **Service → Repository → Mongoose model**; do not access Mongoose models directly from controllers/gateways.
-- For pagination and lists, prefer **cursor-based pagination** patterns already used in `PostsModule` (e.g., compound cursor on timestamp + `_id`) over offset-based pagination.
-- For async/background work, prefer module-local `queue/*` + processors (e.g., `posts` unread queue) and use EventEmitter `events/*` + `listeners/*` for decoupled domain events.
+- Add new domains as **`src/modules/<feature>/`** with the usual Nest layout; use **Mongo + repository** for document-style data and **Postgres + Drizzle** only where the stack already does (chat).
+- **Service → Repository → Mongoose model or Drizzle client**; avoid accessing models/clients from controllers/gateways.
+- List pagination: prefer **cursor-based** patterns (`PostsModule` feed, **`chat-cursor`** for messages) over naive offset paging for large feeds.
+- Async work: **BullMQ** (`queue/` + `processors/`) and **EventEmitter** (`events/` + `listeners/`) following existing modules.
+- Reuse **`common`** types, validators, and Redis key constants instead of duplicating.

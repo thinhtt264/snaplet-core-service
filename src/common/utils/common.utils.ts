@@ -70,6 +70,14 @@ export function throwInvalidCredentials(): never {
   );
 }
 
+export function throwEmailRegisteredWithGoogle(): never {
+  throw new AppException(
+    HttpStatus.CONFLICT,
+    ErrorCode.EMAIL_REGISTERED_WITH_GOOGLE,
+    'This email is already registered with Google. Please sign in with Google.',
+  );
+}
+
 export function throwPostCreateLimitExceeded(
   limit: number,
   currentCount: number,

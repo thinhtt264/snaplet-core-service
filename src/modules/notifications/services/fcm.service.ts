@@ -34,7 +34,6 @@ export class FcmService implements OnModuleInit {
     title: string;
     body: string;
     data?: Record<string, string>;
-    includeNotification?: boolean;
   }): Promise<{ success: boolean; shouldDeleteToken: boolean }> {
     if (!this.messaging) {
       this.logger.warn('FCM messaging unavailable (not initialized)');
@@ -51,17 +50,14 @@ export class FcmService implements OnModuleInit {
         ]),
       );
 
-      const includeNotification = params.includeNotification ?? true;
-
       await this.messaging.send({
         token: params.token,
-        notification: includeNotification
-          ? {
-              title: params.title,
-              body: params.body,
-            }
-          : undefined,
-        data: dataPayload,
+        notification: undefined,
+        data: {
+          ...dataPayload,
+          ...(params.title && { title: params.title }),
+          ...(params.body && { body: params.body }),
+        },
         android: {
           priority: 'high',
           data: dataPayload,

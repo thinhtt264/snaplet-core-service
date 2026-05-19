@@ -15,6 +15,8 @@ export interface RawMediaFromAggregation {
   mimeType: ImageMimeType;
   mediaKey?: string;
   duration?: number;
+  width: number;
+  height: number;
   transform: ImageTransform;
   status: MediaStatus;
   createdAt: Date;
@@ -41,6 +43,7 @@ export interface RawPostFromAggregation {
   userId: Types.ObjectId;
   caption: string;
   visibility: string;
+  allowedViewerUserIds?: Types.ObjectId[];
   createdAt: Date;
   user: RawUserFromAggregation;
   media: RawMediaFromAggregation[];
@@ -57,7 +60,12 @@ export interface RawPostActivityFromAggregation {
 }
 
 export interface FindPostsWithCursorParams {
-  userIds: Types.ObjectId[];
+  requesterUserId: Types.ObjectId;
+  friendUserIds: Types.ObjectId[];
+  /**
+   * Optional author filter. Visibility rules are still enforced relative to requester.
+   */
+  authorUserIds?: Types.ObjectId[];
   limit: number;
   cursor?: FeedCursor | null;
 }
@@ -71,6 +79,7 @@ export interface FindPostsWithCursorResult {
 export interface IPostRepository {
   create(post: Partial<Post>): Promise<Post>;
   countPostsByFriendCreatedAfter(
+    requesterUserId: Types.ObjectId,
     friendUserIds: Types.ObjectId[],
     createdAtAfter: Date,
     max: number,
@@ -88,5 +97,6 @@ export interface IPostRepository {
   ): Promise<boolean>;
   findLatestFriendActivities(params: {
     friendIds: Types.ObjectId[];
+    requesterUserId: Types.ObjectId;
   }): Promise<RawPostActivityFromAggregation | null>;
 }

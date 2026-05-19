@@ -36,12 +36,24 @@ export class PostsUnreadQueueService implements OnModuleDestroy {
     });
   }
 
-  async enqueuePostCreated(authorId: string): Promise<void> {
-    await this.enqueue(POSTS_UNREAD_JOB_CREATED, { authorId });
+  async enqueuePostCreated(
+    authorId: string,
+    recipientUserIds: string[],
+  ): Promise<void> {
+    await this.enqueue(POSTS_UNREAD_JOB_CREATED, {
+      authorId,
+      recipientUserIds,
+    });
   }
 
-  async enqueuePostDeleted(authorId: string): Promise<void> {
-    await this.enqueue(POSTS_UNREAD_JOB_DELETED, { authorId });
+  async enqueuePostDeleted(
+    authorId: string,
+    recipientUserIds: string[],
+  ): Promise<void> {
+    await this.enqueue(POSTS_UNREAD_JOB_DELETED, {
+      authorId,
+      recipientUserIds,
+    });
   }
 
   async enqueueMarkSeen(

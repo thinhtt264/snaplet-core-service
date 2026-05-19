@@ -1,11 +1,11 @@
 # ======================
 # Builder stage
 # ======================
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Enable pnpm via corepack (node 20 có sẵn)
+# Enable pnpm via corepack (node 24 có sẵn)
 RUN corepack enable
 
 # Copy lockfile trước để tận dụng cache
@@ -25,7 +25,7 @@ RUN pnpm build
 # ======================
 # Production stage
 # ======================
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 WORKDIR /app
 
@@ -44,10 +44,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 # Copy build output
 COPY --from=builder /app/dist ./dist
 
-# (Optional) nếu app cần file khác
-# COPY --from=builder /app/public ./public
+# Migration files + entrypoint
+COPY --from=builder /app/drizzle ./drizzle
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
 
 EXPOSE 4040
 
-# Nest build outputs `dist/main.js` (not `dist/src/main.js`)
-CMD ["node", "dist/main.js"]
+ENTRYPOINT ["./entrypoint.sh"]

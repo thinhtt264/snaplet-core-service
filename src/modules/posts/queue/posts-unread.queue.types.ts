@@ -1,9 +1,11 @@
 export interface PostUnreadCreatedJobData {
   authorId: string;
+  recipientUserIds: string[];
 }
 
 export interface PostUnreadDeletedJobData {
   authorId: string;
+  recipientUserIds: string[];
 }
 
 export interface PostUnreadMarkSeenJobData {

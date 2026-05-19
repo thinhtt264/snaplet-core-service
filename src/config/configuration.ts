@@ -1,7 +1,7 @@
 const COMMON_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
 
 export default () => ({
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv: process.env.NODE_ENV || 'staging',
   port: parseInt(process.env.PORT || '3000', 10),
   apiPrefix: process.env.API_PREFIX || '',
 
@@ -101,6 +101,14 @@ export default () => ({
     projectId: process.env.FIREBASE_PROJECT_ID || '',
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
     privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n') || '',
+  },
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+  },
+
+  postgres: {
+    url: process.env.POSTGRES_URL,
   },
 
   /**

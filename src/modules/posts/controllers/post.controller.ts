@@ -110,12 +110,13 @@ export class PostController {
     @CurrentUserId() userId: string,
     @Body() dto: CreatePostDto,
   ): Promise<{ id: string; createdAt: Date }> {
-    const { mediaIds, caption, visibility } = dto;
+    const { mediaIds, caption, visibility, allowedViewerUserIds } = dto;
     return await this.postService.createPost(
       userId,
       mediaIds,
       caption,
       visibility,
+      allowedViewerUserIds,
     );
   }
 

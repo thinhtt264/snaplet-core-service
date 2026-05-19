@@ -11,6 +11,8 @@ export interface MediaBaseResponse {
   mimeType: ImageMimeType;
   images: ImageSizesResponse;
   duration?: number;
+  width: number;
+  height: number;
   transform: ImageTransform;
   status: string;
   createdAt: Date;

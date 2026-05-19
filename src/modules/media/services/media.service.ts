@@ -62,6 +62,8 @@ export class MediaService {
           ownerId: new Types.ObjectId(ownerId),
           mimeType: item.mimeType,
           mediaKey,
+          width: item.width,
+          height: item.height,
           transform: item.transform,
           status: MediaStatus.PENDING,
         });
@@ -222,6 +224,21 @@ export class MediaService {
     return media.every((m) => m.status === MediaStatus.READY);
   }
 
+  async getMediaKeysByIds(mediaIds: string[]): Promise<string[]> {
+    const objectIds = mediaIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    if (!objectIds.length) {
+      return [];
+    }
+
+    const media = await this.mediaRepository.findByIds(objectIds);
+    return media
+      .map((item) => item.mediaKey?.trim())
+      .filter((key): key is string => Boolean(key));
+  }
+
   private async processMedia(mediaId: Types.ObjectId): Promise<void> {
     await this.mediaRepository.updateStatusIf(
       mediaId,
@@ -267,6 +284,8 @@ export class MediaService {
       mimeType: media.mimeType,
       images,
       duration: media.duration,
+      width: media.width,
+      height: media.height,
       transform: media.transform,
       status: media.status,
       createdAt: media.createdAt,

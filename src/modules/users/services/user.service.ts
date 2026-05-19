@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,8 +9,11 @@ import { User } from '../schemas/user.schema';
 import {
   AvatarUploadRequestResponse,
   IUserProfileResponse,
+  UserBasicInfoResponse,
 } from '../interfaces/user-response.interface';
 import { UserRepository } from '../repositories/user.repository';
+import { UserValidationService } from './user-validation.service';
+import { CompleteOnboardingDto } from '../dto/complete-onboarding.dto';
 import { CacheService } from '@modules/cache/cache.service';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
@@ -30,6 +35,7 @@ export class UserService {
     private readonly userRepository: UserRepository,
     private readonly storageService: StorageService,
     private readonly cacheService: CacheService,
+    private readonly userValidationService: UserValidationService,
   ) {}
 
   async checkUserExists(userId: string): Promise<boolean> {
@@ -224,6 +230,47 @@ export class UserService {
     };
   }
 
+  async completeOnboarding(
+    userId: string,
+    dto: CompleteOnboardingDto,
+  ): Promise<IUserProfileResponse> {
+    const { firstName, lastName, username } = dto;
+    const user = await this.userRepository.findActiveById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isOnboardingComplete) {
+      // Prevent username changes via onboarding endpoint.
+      return this.buildUserProfileResponse(user);
+    }
+
+    const taken = await this.userValidationService.isUsernameTaken(username);
+    if (taken) {
+      throw new ConflictException('USERNAME_TAKEN');
+    }
+
+    const updated = await this.userRepository.update(userId, {
+      username: username,
+      firstName: firstName,
+      lastName: lastName,
+      isOnboardingComplete: true,
+    });
+
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.cacheService.invalidateByTag(`user:${userId}`);
+
+    // Extra safety: if username was still not set for any reason, block.
+    if (!updated.username) {
+      throw new ForbiddenException('ONBOARDING_REQUIRED');
+    }
+
+    return this.buildUserProfileResponse(updated);
+  }
+
   async updateDisplayName(
     userId: string,
     firstName: string,
@@ -285,6 +332,11 @@ export class UserService {
     return label?.trim() || 'Someone';
   }
 
+  async getUsernameById(userId: string): Promise<string | null> {
+    const user = await this.userRepository.findActiveById(userId);
+    return user?.username ?? null;
+  }
+
   /** Reactor avatar (XS) for reaction push payload on mobile clients. */
   async getReactionNotificationAvatarUrl(
     userId: string,
@@ -325,5 +377,25 @@ export class UserService {
       createdAt: user.createdAt,
       initiator: user.initiator,
     }));
+  }
+
+  async getUserBasicInfoMapByIds(
+    userIds: string[],
+  ): Promise<Map<string, UserBasicInfoResponse>> {
+    const users = await this.userRepository.findManyByIds(userIds);
+    const result = new Map<string, UserBasicInfoResponse>();
+
+    for (const user of users) {
+      const userId = user._id.toString();
+      result.set(userId, {
+        userId,
+        username: user.username ?? '',
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        avatarUrls: this.getAvatarUrlsForKey(user.avatarKey),
+      });
+    }
+
+    return result;
   }
 }

@@ -3,11 +3,15 @@ export const NOTIFICATION_QUEUE_NAME = 'notification-queue';
 export enum NotificationJobName {
   PUSH_REACTION = 'push.reaction',
   PUSH_WIDGET_REFRESH = 'push.widget_refresh',
+  PUSH_CHAT_FCM = 'push.chat_fcm',
+  PUSH_CUSTOM = 'push.custom',
 }
 
 export enum NotificationType {
-  POST_REACTION = 'POST_REACTION',
+  CUSTOM = 'CUSTOM',
   WIDGET_REFRESH = 'WIDGET_REFRESH',
+  NEW_CHAT_MESSAGE = 'NEW_CHAT_MESSAGE',
+  NEW_MESSAGE_REACTION = 'NEW_MESSAGE_REACTION',
 }
 
 export enum NotificationDeliveryMode {
@@ -26,7 +30,7 @@ export const NOTIFICATION_TYPE_MOBILE_POLICY: Record<
   NotificationType,
   NotificationTypeMobilePolicy
 > = {
-  [NotificationType.POST_REACTION]: {
+  [NotificationType.CUSTOM]: {
     deliveryMode: NotificationDeliveryMode.SHOW,
     triggerWidgetRefresh: true,
     triggerFeedRefresh: false,
@@ -35,6 +39,18 @@ export const NOTIFICATION_TYPE_MOBILE_POLICY: Record<
   [NotificationType.WIDGET_REFRESH]: {
     deliveryMode: NotificationDeliveryMode.SILENT,
     triggerWidgetRefresh: true,
+    triggerFeedRefresh: false,
+    deepLink: null,
+  },
+  [NotificationType.NEW_CHAT_MESSAGE]: {
+    deliveryMode: NotificationDeliveryMode.SHOW,
+    triggerWidgetRefresh: false,
+    triggerFeedRefresh: false,
+    deepLink: null,
+  },
+  [NotificationType.NEW_MESSAGE_REACTION]: {
+    deliveryMode: NotificationDeliveryMode.SHOW,
+    triggerWidgetRefresh: false,
     triggerFeedRefresh: false,
     deepLink: null,
   },

@@ -39,6 +39,34 @@ export class UserRepository implements IUserRepository {
     return this.userModel.findOne({ _id: id, isDeleted: false }).exec();
   }
 
+  async findManyByIds(ids: string[]): Promise<User[]> {
+    if (!ids.length) return [];
+    return this.userModel.find({ _id: { $in: ids }, isDeleted: false }).exec();
+  }
+
+  async findByGoogleId(googleId: string): Promise<User | null> {
+    return this.userModel
+      .findOne({ googleId: googleId.trim(), isDeleted: false })
+      .exec();
+  }
+
+  async linkGoogleId(userId: string, googleId: string): Promise<User> {
+    const updated = await this.userModel
+      .findOneAndUpdate(
+        { _id: userId, isDeleted: false },
+        { $set: { googleId: googleId.trim() } },
+        { new: true },
+      )
+      .exec();
+
+    if (!updated) {
+      // Keep repository contract: if user doesn't exist, callers treat as error.
+      throw new Error('User not found');
+    }
+
+    return updated;
+  }
+
   async checkEmailExists(email: string): Promise<boolean> {
     const user = await this.userModel
       .findOne({ email: email.toLowerCase().trim() })
@@ -60,6 +88,24 @@ export class UserRepository implements IUserRepository {
       username: userData.username?.toLowerCase().trim(),
     });
     return user.save();
+  }
+
+  async update(userId: string, update: Partial<User>): Promise<User | null> {
+    const normalized: Partial<User> = { ...update };
+    if (normalized.email) {
+      normalized.email = normalized.email.toLowerCase().trim();
+    }
+    if (normalized.username) {
+      normalized.username = normalized.username.toLowerCase().trim();
+    }
+
+    return this.userModel
+      .findOneAndUpdate(
+        { _id: userId, isDeleted: false },
+        { $set: normalized },
+        { new: true },
+      )
+      .exec();
   }
 
   private async searchByUsernameRaw(

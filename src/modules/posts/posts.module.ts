@@ -7,6 +7,7 @@ import {
 } from './schemas/post-reaction.schema';
 import { PostController } from './controllers/post.controller';
 import { PostService } from './services/post.service';
+import { PostAudienceService } from './services/post-audience.service';
 import { PostUnreadService } from './services/post-unread.service';
 import { PostRepository } from './repositories/post.repository';
 import { PostReactionRepository } from './repositories/post-reaction.repository';
@@ -20,6 +21,7 @@ import { StorageModule } from '@infrastructure/storage/storage.module';
 import { PostsUnreadQueueService } from './queue/posts-unread.queue.service';
 import { PostsUnreadProcessor } from './queue/posts-unread.processor';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
+import { ChatModule } from '@modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -32,10 +34,12 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
     UsersModule,
     StorageModule,
     NotificationsModule,
+    ChatModule,
   ],
   controllers: [PostController],
   providers: [
     PostService,
+    PostAudienceService,
     PostUnreadService,
     PostsUnreadQueueService,
     PostsUnreadProcessor,

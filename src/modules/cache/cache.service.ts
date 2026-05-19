@@ -218,6 +218,116 @@ export class CacheService {
   }
 
   /**
+   * Batch get-or-compute: single MGET round-trip, then one computeFn call for all
+   * misses, then a single pipeline MSET for all new entries.
+   *
+   * @param keyPrefix  - Redis key feature
+   * @param suffixes   - Key suffixes to look up (e.g. user IDs or conv IDs)
+   * @param computeFn  - Called with the suffix list that were cache misses;
+   *                     returns a Map<suffix, value> (omit suffix for "not found")
+   * @param ttlSeconds - TTL applied to every newly cached entry
+   * @param options    - shouldCache: skip caching a specific value (default: always cache)
+   * @returns Map<suffix, T> of all hits + computed results
+   */
+  async mgetOrCompute<T>(
+    keyPrefix: RedisKeyFeature,
+    suffixes: string[],
+    computeFn: (missedSuffixes: string[]) => Promise<Map<string, T>>,
+    ttlSeconds: number,
+    options?: {
+      shouldCache?: (value: T) => boolean;
+      serialize?: SerializeFn<T>;
+      deserialize?: DeserializeFn<T>;
+    },
+  ): Promise<Map<string, T>> {
+    if (!suffixes.length) return new Map();
+
+    const keys = suffixes.map((s) => buildRedisKey(keyPrefix, s));
+    const serialize =
+      options?.serialize ?? ((v: T) => this.defaultSerialize(v));
+    const shouldCache = options?.shouldCache ?? (() => true);
+
+    // 1. Single MGET round-trip
+    let rawValues: (string | null)[];
+    try {
+      rawValues = await this.redisService.mget(keys);
+    } catch (error: any) {
+      this.logger.warn(
+        `mgetOrCompute mget failed for ${keyPrefix}: ${error?.message ?? error}`,
+      );
+      rawValues = keys.map(() => null);
+    }
+
+    // 2. Separate hits from misses
+    const result = new Map<string, T>();
+    const missSuffixes: string[] = [];
+
+    for (let i = 0; i < suffixes.length; i++) {
+      const raw = rawValues[i];
+      if (raw !== null) {
+        try {
+          const value = options?.deserialize
+            ? options.deserialize(raw)
+            : (JSON.parse(raw) as T);
+          result.set(suffixes[i], value);
+          this.logger.debug(`Cache hit: ${keys[i]}`);
+        } catch {
+          this.logger.warn(
+            `mgetOrCompute parse failed for ${keys[i]}, treating as miss`,
+          );
+          missSuffixes.push(suffixes[i]);
+        }
+      } else {
+        missSuffixes.push(suffixes[i]);
+      }
+    }
+
+    if (!missSuffixes.length) return result;
+
+    // 3. Compute misses in one call
+    let computed: Map<string, T>;
+    try {
+      computed = await computeFn(missSuffixes);
+    } catch (error: any) {
+      this.logger.error(
+        `mgetOrCompute computeFn failed for ${keyPrefix}: ${error?.message ?? error}`,
+      );
+      throw error;
+    }
+
+    // 4. Single pipeline MSET for all cacheable entries
+    const toSet: Array<{ key: string; value: string; ttlSeconds: number }> = [];
+    for (const [suffix, value] of computed) {
+      result.set(suffix, value);
+      if (shouldCache(value)) {
+        try {
+          toSet.push({
+            key: buildRedisKey(keyPrefix, suffix),
+            value: serialize(value),
+            ttlSeconds,
+          });
+        } catch (error: any) {
+          this.logger.warn(
+            `mgetOrCompute serialize failed for ${keyPrefix}:${suffix}: ${error?.message ?? error}`,
+          );
+        }
+      }
+    }
+
+    if (toSet.length) {
+      try {
+        await this.redisService.mset(toSet);
+      } catch (error: any) {
+        this.logger.warn(
+          `mgetOrCompute mset failed for ${keyPrefix}: ${error?.message ?? error}`,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Invalidate cache by key
    * @param keyPrefix - Redis key feature
    * @param keySuffix - Additional key suffix (e.g., userId)

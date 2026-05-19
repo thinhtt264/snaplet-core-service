@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { RelationshipService } from '@modules/relationships/services/relationship.service';
 import { RedisService } from '@common/redis/redis.service';
 import { buildRedisKey } from '@common/utils/redis.utils';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
@@ -15,7 +14,6 @@ import { POSTS_UNREAD_UPDATED_EVENT } from '@modules/socket/events/socket-events
 @Injectable()
 export class PostUnreadService {
   constructor(
-    private readonly relationshipService: RelationshipService,
     private readonly redisService: RedisService,
     private readonly socketService: SocketService,
     private readonly cacheService: CacheService,
@@ -127,14 +125,13 @@ export class PostUnreadService {
     });
   }
 
-  async applyPostDeleteSideEffects(authorId: string): Promise<void> {
-    const friendIds = await this.relationshipService.getMyFriendIds(authorId);
-    if (!friendIds.length) {
+  async applyPostDeleteSideEffects(recipientUserIds: string[]): Promise<void> {
+    if (!recipientUserIds.length) {
       return;
     }
 
     await Promise.all(
-      friendIds.map(async (friendId) => {
+      recipientUserIds.map(async (friendId) => {
         const countKey = buildRedisKey(
           REDIS_KEY_FEATURES.POST_UNREAD_COUNT_CACHE,
           friendId,

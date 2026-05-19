@@ -1,6 +1,6 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { UserRepository } from '../repositories/user.repository';
-import { verifyPassword } from '@common/utils';
+import { throwEmailRegisteredWithGoogle, verifyPassword } from '@common/utils';
 import { User } from '../schemas/user.schema';
 
 @Injectable()
@@ -30,12 +30,14 @@ export class UserValidationService {
   }
 
   async checkEmailAvailable(email: string): Promise<{ available: boolean }> {
-    try {
-      await this.validateEmailUnique(email);
-      return { available: true };
-    } catch {
-      return { available: false };
+    const existing = await this.userRepository.findActiveByEmail(email);
+    if (!existing) return { available: true };
+
+    if (existing.authProvider === 'google') {
+      throwEmailRegisteredWithGoogle();
     }
+
+    return { available: false };
   }
 
   async checkUsernameAvailable(
@@ -55,11 +57,21 @@ export class UserValidationService {
       return null;
     }
 
+    if (!user.password) {
+      // Google accounts (or accounts without local password) cannot login via password.
+      return null;
+    }
+
     const isPasswordValid = await verifyPassword(password, user.password);
     if (!isPasswordValid) {
       return null;
     }
 
     return user;
+  }
+
+  async isUsernameTaken(username: string): Promise<boolean> {
+    const user = await this.userRepository.findActiveByUsername(username);
+    return !!user;
   }
 }
