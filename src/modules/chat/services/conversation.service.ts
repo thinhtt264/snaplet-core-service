@@ -1,10 +1,12 @@
 import {
   BadRequestException,
-  ForbiddenException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { AppException } from '@common/exception/AppException';
+import { ErrorCode } from '@common/constants';
 import { ConversationRepository } from '../repositories/conversation.repository';
 import { UserService } from '@modules/users/services/user.service';
 import { UserRepository } from '@modules/users/repositories/user.repository';
@@ -91,7 +93,9 @@ export class ConversationService {
       userB,
     );
     if (relationship?.status !== RelationshipStatus.ACCEPTED) {
-      throw new ForbiddenException(
+      throw new AppException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.CONVERSATION_RESTRICTED,
         'You can only message users who are your friends',
       );
     }
