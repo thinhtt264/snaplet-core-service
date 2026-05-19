@@ -7,11 +7,14 @@ import {
   type ChatMessageSentEvent,
 } from '@modules/chat/events/chat-notification.events';
 import {
+  FRIEND_REQUEST_CREATED_NOTIFICATION_EVENT,
+  type FriendRequestCreatedNotificationPayload,
   REACTION_CREATED_FOR_NOTIFICATION_EVENT,
   type ReactionCreatedNotificationPayload,
 } from '../events/notification.events';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { NotificationType } from '../constants/notification.constants';
+import { buildFriendRequestDeeplink } from '@common/utils';
 
 @Injectable()
 export class NotificationListener {
@@ -62,6 +65,27 @@ export class NotificationListener {
     }
   }
 
+  @OnEvent(FRIEND_REQUEST_CREATED_NOTIFICATION_EVENT, { async: true })
+  async handleFriendRequestCreated(
+    payload: FriendRequestCreatedNotificationPayload,
+  ): Promise<void> {
+    try {
+      await this.notificationQueueService.addCustomPushJob({
+        recipientUserId: payload.targetUserId,
+        deeplink: buildFriendRequestDeeplink(payload.initiatorUsername ?? ''),
+        title: `${payload.initiatorDisplayName} sent you a friend request`,
+        body: 'Tap to open app',
+        largeIconUrl: payload.initiatorAvatarUrl,
+        type: NotificationType.CUSTOM,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to enqueue friend request push job: ${message}`,
+      );
+    }
+  }
+
   @OnEvent(REACTION_CREATED_FOR_NOTIFICATION_EVENT, { async: true })
   async handleReactionCreated(
     payload: ReactionCreatedNotificationPayload,
@@ -73,12 +97,12 @@ export class NotificationListener {
     try {
       await this.notificationQueueService.addReactionPushJob({
         postOwnerId: payload.postOwnerId,
-        postId: payload.postId,
+        deeplink: payload.deeplink,
         reactorId: payload.reactorId,
         reactorDisplayName: payload.reactorDisplayName,
-        actorAvatarUrl: payload.actorAvatarUrl,
+        largeIconUrl: payload.largeIconUrl,
         reactionIcon: payload.reactionIcon,
-        type: NotificationType.POST_REACTION,
+        type: NotificationType.CUSTOM,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

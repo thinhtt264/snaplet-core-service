@@ -25,6 +25,7 @@ import { RelationshipService } from '@modules/relationships/services/relationshi
 import { UserService } from '@modules/users/services/user.service';
 import { REDIS_KEY_FEATURES } from '@common/constants/redis-keys.constants';
 import { ImageSizeKey } from '@common/types';
+import { buildDeeplink, DeeplinkScreen } from '@common/utils';
 import { POST_CREATED_EVENT, PostCreatedEvent } from '../events/post-events';
 import {
   DEFAULT_CACHE_POST_TTL,
@@ -530,16 +531,16 @@ export class PostService {
 
       setImmediate(async () => {
         try {
-          const [reactorDisplayName, actorAvatarUrl] = await Promise.all([
+          const [reactorDisplayName, largeIconUrl] = await Promise.all([
             this.userService.getReactionNotificationLabel(userId),
             this.userService.getReactionNotificationAvatarUrl(userId),
           ]);
           const notificationPayload: ReactionCreatedNotificationPayload = {
-            postId,
+            deeplink: buildDeeplink(DeeplinkScreen.SPOTLIGHT, postId),
             postOwnerId: ownerUserId,
             reactorId: userId,
             reactorDisplayName,
-            actorAvatarUrl,
+            largeIconUrl,
             reactionIcon: getCurrentReactionIcon(reaction.reactionIcon),
           };
           this.eventEmitter.emit(

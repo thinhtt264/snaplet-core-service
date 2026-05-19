@@ -18,6 +18,7 @@ import {
 import type {
   ChatFcmJobPayload,
   ChatFcmPushJobData,
+  CustomPushJobData,
   ReactionPushJobData,
   WidgetRefreshPushJobData,
 } from '../dto/push-notification.dto';
@@ -100,6 +101,9 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       case NotificationJobName.PUSH_CHAT_FCM:
         await this.handleChatFcmPush(job.data as ChatFcmPushJobData);
         return;
+      case NotificationJobName.PUSH_CUSTOM:
+        await this.handleCustomPush(job.data as CustomPushJobData);
+        return;
       default:
         this.logger.warn(`Unknown notification job: ${String(job.name)}`);
     }
@@ -108,10 +112,10 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
   private async handleReactionPush(data: ReactionPushJobData): Promise<void> {
     const {
       postOwnerId,
-      postId,
+      deeplink,
       reactorId,
       reactorDisplayName,
-      actorAvatarUrl,
+      largeIconUrl,
       reactionIcon,
     } = data;
 
@@ -122,7 +126,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log(
-      `Sending reaction notification: reactorUserId=${reactorId}, recipientUserId=${postOwnerId}, postId=${postId}`,
+      `Sending reaction notification: reactorUserId=${reactorId}, recipientUserId=${postOwnerId}, deeplink=${deeplink}`,
     );
 
     const result = await this.fcmService.sendPush({
@@ -130,8 +134,8 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       title: `${reactorDisplayName} reacted to your post`,
       body: reactionIcon,
       data: this.buildNotificationData(data.type, {
-        postId: String(postId),
-        actorAvatarUrl: actorAvatarUrl ?? '',
+        deeplink,
+        largeIconUrl: largeIconUrl ?? '',
       }),
     });
 
@@ -166,8 +170,8 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       title: '',
       body: '',
       data: this.buildNotificationData(data.type, {
-        postId: '',
-        actorAvatarUrl: '',
+        deeplink: '',
+        largeIconUrl: '',
       }),
     });
 
@@ -175,6 +179,41 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `Clearing invalid FCM token for user ${data.recipientUserId}`,
       );
+      await this.userRepository.updateFcmToken(data.recipientUserId, null);
+    }
+  }
+
+  private async handleCustomPush(data: CustomPushJobData): Promise<void> {
+    const fcmToken = await this.userRepository.findFcmToken(
+      data.recipientUserId,
+    );
+    if (!fcmToken) {
+      this.logger.debug(
+        `No FCM token for user ${data.recipientUserId}, skipping custom push`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `Sending custom push: recipientUserId=${data.recipientUserId}, deeplink=${data.deeplink}`,
+    );
+
+    const result = await this.fcmService.sendPush({
+      token: fcmToken,
+      title: data.title,
+      body: data.body,
+      data: {
+        type: data.type,
+        deeplink: data.deeplink,
+        largeIconUrl: data.largeIconUrl ?? '',
+      },
+    });
+
+    this.logger.log(
+      `Custom push result: success=${result.success}, shouldDeleteToken=${result.shouldDeleteToken}`,
+    );
+
+    if (result.shouldDeleteToken) {
       await this.userRepository.updateFcmToken(data.recipientUserId, null);
     }
   }
@@ -288,17 +327,17 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
 
   private buildNotificationData(
     type: NotificationType,
-    context: { postId: string; actorAvatarUrl: string },
+    context: { deeplink: string; largeIconUrl: string },
   ): Record<string, string> {
     switch (type) {
       case NotificationType.WIDGET_REFRESH:
         return { type };
-      case NotificationType.POST_REACTION:
+      case NotificationType.CUSTOM:
       default:
         return {
           type,
-          postId: context.postId,
-          actorAvatarUrl: context.actorAvatarUrl,
+          deeplink: context.deeplink,
+          largeIconUrl: context.largeIconUrl,
         };
     }
   }

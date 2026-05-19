@@ -8,10 +8,12 @@ import {
 } from '../constants/notification.constants';
 import type {
   ChatFcmPushJobData,
+  CustomPushJobData,
   ReactionPushJobData,
   WidgetRefreshPushJobData,
 } from '../dto/push-notification.dto';
 import { assertUnreachable } from '../utils/assert-unreachable.util';
+import { extractDeeplinkId } from '@common/utils';
 
 @Injectable()
 export class NotificationQueueService implements OnModuleDestroy {
@@ -40,7 +42,7 @@ export class NotificationQueueService implements OnModuleDestroy {
       await this.queue.add(NotificationJobName.PUSH_REACTION, data, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
-        jobId: `reaction-${data.postId}-${data.reactorId}`,
+        jobId: `reaction-${extractDeeplinkId(data.deeplink)}-${data.reactorId}`,
         removeOnComplete: true,
         removeOnFail: 100,
       });
@@ -81,6 +83,21 @@ export class NotificationQueueService implements OnModuleDestroy {
       const message =
         error instanceof Error ? error.message : 'unknown enqueue error';
       this.logger.warn(`Failed to enqueue widget refresh push: ${message}`);
+    }
+  }
+
+  async addCustomPushJob(data: CustomPushJobData): Promise<void> {
+    try {
+      await this.queue.add(NotificationJobName.PUSH_CUSTOM, data, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: true,
+        removeOnFail: 100,
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'unknown enqueue error';
+      this.logger.warn(`Failed to enqueue custom push: ${message}`);
     }
   }
 
