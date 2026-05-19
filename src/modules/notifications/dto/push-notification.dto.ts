@@ -7,10 +7,10 @@ export type ChatFcmNotificationType =
 
 export interface ReactionPushJobData {
   postOwnerId: string;
-  postId: string;
+  deeplink: string;
   reactorId: string;
   reactorDisplayName: string;
-  actorAvatarUrl: string | null;
+  largeIconUrl: string | null;
   reactionIcon: string;
   type: NotificationType;
 }
@@ -44,4 +44,13 @@ export type ChatFcmJobPayload =
 export interface ChatFcmPushJobData {
   recipientUserId: string;
   payload: ChatFcmJobPayload;
+}
+
+export interface CustomPushJobData {
+  recipientUserId: string;
+  deeplink: string;
+  title: string;
+  body: string;
+  largeIconUrl: string | null;
+  type: NotificationType.CUSTOM;
 }

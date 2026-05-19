@@ -14,3 +14,4 @@ export const CHAT_ARCHIVE_QUEUE = 'chat-archive';
 export const CHAT_CONVERSATION_MEMBER_CACHE_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
 export const PARTNER_PROFILE_CACHE_TTL_SECONDS = 60 * 60; // 1 hour
 export const CONV_LAST_MESSAGE_CACHE_TTL_SECONDS = 10 * 60; // 10 minutes
+export const CHAT_CONV_RESTRICTED_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days

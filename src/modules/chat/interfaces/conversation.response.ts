@@ -14,6 +14,7 @@ export interface ConversationResponse {
   lastMessage: MessageResponse | null;
   myLastSeenAt: Date | null;
   partnerLastSeenAt: Date | null;
+  isRestricted: boolean;
   syncUpdatedAt: Date;
   createdAt: Date;
 }

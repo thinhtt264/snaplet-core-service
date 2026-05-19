@@ -19,6 +19,7 @@ import { MessageReactionRepository } from './repositories/message-reaction.repos
 import { ChatArchiveProcessor } from './processors/chat-archive.processor';
 import { ChatMediaCleanupProcessor } from './processors/chat-media-cleanup.processor';
 import { ChatMediaCleanupQueueService } from './queue/chat-media-cleanup.queue.service';
+import { RelationshipEventListener } from './listeners/relationship-event.listener';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ChatMediaCleanupQueueService } from './queue/chat-media-cleanup.queue.s
     ChatArchiveProcessor,
     ChatMediaCleanupProcessor,
     ChatMediaCleanupQueueService,
+    RelationshipEventListener,
   ],
   exports: [
     ChatGateway,

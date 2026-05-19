@@ -5,50 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1776227534004,
-      "tag": "0000_bright_adam_warlock",
+      "when": 1779090999345,
+      "tag": "0000_broad_mimic",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1777002697311,
-      "tag": "0001_tense_sleeper",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1777301869200,
-      "tag": "0002_rapid_human_cannonball",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1777320600000,
-      "tag": "0004_conversations_sync_updated_at",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1778060000000,
-      "tag": "0005_message_reactions",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1778214650922,
-      "tag": "0006_messages_media_status",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1778813508670,
-      "tag": "0006_tidy_vanisher",
+      "when": 1779102159978,
+      "tag": "0001_flimsy_thing",
       "breakpoints": true
     }
   ]

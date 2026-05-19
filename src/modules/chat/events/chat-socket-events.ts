@@ -15,6 +15,8 @@ export const CHAT_MESSAGE_UNPINNED = 'chat:message.unpinned';
 export const CHAT_MESSAGE_REACTION_UPDATED = 'chat:message.reaction_updated';
 export const CHAT_TYPING_START_EVT = 'chat:typing.start';
 export const CHAT_TYPING_STOP_EVT = 'chat:typing.stop';
+export const CONVERSATION_RESTRICTED = 'conversation_restricted';
+export const CONVERSATION_UNRESTRICTED = 'conversation_unrestricted';
 
 // Union of all server → client events — use this to type broadcastToRoom
 export type ChatServerEvent =
@@ -25,7 +27,9 @@ export type ChatServerEvent =
   | typeof CHAT_MESSAGE_UNPINNED
   | typeof CHAT_MESSAGE_REACTION_UPDATED
   | typeof CHAT_TYPING_START_EVT
-  | typeof CHAT_TYPING_STOP_EVT;
+  | typeof CHAT_TYPING_STOP_EVT
+  | typeof CONVERSATION_RESTRICTED
+  | typeof CONVERSATION_UNRESTRICTED;
 
 // Payload types
 export interface ChatJoinPayload {
@@ -58,4 +62,8 @@ export interface ChatMessageReactionUpdatedEventPayload {
   actorId: string;
   actorEmoji: string | null;
   reactions: MessageReactionRecordResponse[];
+}
+
+export interface ConversationRestrictedPayload {
+  conversationId: string;
 }

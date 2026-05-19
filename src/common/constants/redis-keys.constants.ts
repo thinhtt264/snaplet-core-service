@@ -27,6 +27,8 @@ export const REDIS_KEY_FEATURES = {
   CHAT_CONV_LAST_MESSAGE: 'chat:conv_last_msg',
   // Chat reactions per message (keyed by messageId)
   CHAT_MESSAGE_REACTIONS: 'chat:message_reactions',
+  // Chat conversation restricted flag (keyed by convId) — set on unfriend, cleared on re-friend
+  CHAT_CONV_RESTRICTED: 'chat:conv_restricted',
 } as const;
 
 export type RedisKeyFeature =

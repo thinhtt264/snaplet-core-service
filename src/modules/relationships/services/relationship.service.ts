@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   HttpException,
   InternalServerErrorException,
   ConflictException,
@@ -30,9 +31,16 @@ import { FRIEND_REQUEST_UPDATED_EVENT } from '@modules/socket/events/socket-even
 import {
   RELATIONSHIP_DELETED_EVENT,
   RelationshipDeletedEvent,
+  RELATIONSHIP_ACCEPTED_EVENT,
+  RelationshipAcceptedEvent,
 } from '../events/relationship-events';
+import {
+  FRIEND_REQUEST_CREATED_NOTIFICATION_EVENT,
+  FriendRequestCreatedNotificationPayload,
+} from '@modules/notifications/events/notification.events';
 @Injectable()
 export class RelationshipService {
+  private readonly logger = new Logger(RelationshipService.name);
   private readonly cacheTtlSeconds: number;
 
   constructor(
@@ -285,17 +293,13 @@ export class RelationshipService {
     await this.invalidateRelationshipsCache(userId);
   }
 
-  private notifyOtherUser(
+  private notifySocketRelationshipUpdated(
     currentUserId: string,
     user1Id: string,
     user2Id: string,
   ): void {
-    const otherUserId = currentUserId === user1Id ? user2Id : user1Id;
-    this.socketService.emitToUser(
-      otherUserId,
-      FRIEND_REQUEST_UPDATED_EVENT,
-      null,
-    );
+    this.socketService.emitToUser(user1Id, FRIEND_REQUEST_UPDATED_EVENT, null);
+    this.socketService.emitToUser(user2Id, FRIEND_REQUEST_UPDATED_EVENT, null);
   }
 
   async create(
@@ -323,11 +327,39 @@ export class RelationshipService {
       await this.invalidateRelationshipsCache(relationship.user1Id.toString());
       await this.invalidateRelationshipsCache(relationship.user2Id.toString());
 
-      this.notifyOtherUser(
+      this.notifySocketRelationshipUpdated(
         initiatorId,
         relationship.user1Id.toString(),
         relationship.user2Id.toString(),
       );
+
+      setImmediate(async () => {
+        try {
+          const [initiatorDisplayName, initiatorAvatarUrl, initiatorUsername] =
+            await Promise.all([
+              this.userService.getReactionNotificationLabel(initiatorId),
+              this.userService.getReactionNotificationAvatarUrl(initiatorId),
+              this.userService.getUsernameById(initiatorId),
+            ]);
+          const notificationPayload: FriendRequestCreatedNotificationPayload = {
+            initiatorId,
+            initiatorUsername,
+            targetUserId,
+            initiatorDisplayName,
+            initiatorAvatarUrl,
+          };
+          this.eventEmitter.emit(
+            FRIEND_REQUEST_CREATED_NOTIFICATION_EVENT,
+            notificationPayload,
+          );
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          this.logger.error(
+            `Failed to emit friend request notification: ${message}`,
+          );
+        }
+      });
 
       return {
         id: relationship._id.toString(),
@@ -430,11 +462,18 @@ export class RelationshipService {
       updatedRelationship.user2Id.toString(),
     );
 
-    this.notifyOtherUser(
+    this.notifySocketRelationshipUpdated(
       userId,
       updatedRelationship.user1Id.toString(),
       updatedRelationship.user2Id.toString(),
     );
+
+    if (status === RelationshipStatus.ACCEPTED) {
+      this.eventEmitter.emit(RELATIONSHIP_ACCEPTED_EVENT, {
+        user1Id: updatedRelationship.user1Id.toString(),
+        user2Id: updatedRelationship.user2Id.toString(),
+      } as RelationshipAcceptedEvent);
+    }
 
     return {
       id: updatedRelationship._id.toString(),
@@ -487,7 +526,7 @@ export class RelationshipService {
     // Delete relationship directly from object (optimized - no duplicate query)
     await this.relationshipRepository.deleteRelationship(relationship);
 
-    this.notifyOtherUser(
+    this.notifySocketRelationshipUpdated(
       userId,
       relationship.user1Id.toString(),
       relationship.user2Id.toString(),

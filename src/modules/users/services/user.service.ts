@@ -332,6 +332,11 @@ export class UserService {
     return label?.trim() || 'Someone';
   }
 
+  async getUsernameById(userId: string): Promise<string | null> {
+    const user = await this.userRepository.findActiveById(userId);
+    return user?.username ?? null;
+  }
+
   /** Reactor avatar (XS) for reaction push payload on mobile clients. */
   async getReactionNotificationAvatarUrl(
     userId: string,

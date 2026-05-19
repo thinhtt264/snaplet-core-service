@@ -131,6 +131,43 @@ export class ConversationRepository {
     return conv.userA === userId ? conv.userB : conv.userA;
   }
 
+  async restrictBetweenUsers(
+    userA: string,
+    userB: string,
+  ): Promise<{ id: string } | null> {
+    const [lo, hi] = [userA, userB].sort();
+    const rows = await this.db
+      .update(schema.conversations)
+      .set({ isRestricted: true, syncUpdatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.conversations.userA, lo),
+          eq(schema.conversations.userB, hi),
+        ),
+      )
+      .returning({ id: schema.conversations.id });
+    return rows[0] ?? null;
+  }
+
+  async unrestrictBetweenUsers(
+    userA: string,
+    userB: string,
+  ): Promise<{ id: string } | null> {
+    const [lo, hi] = [userA, userB].sort();
+    const rows = await this.db
+      .update(schema.conversations)
+      .set({ isRestricted: false, syncUpdatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.conversations.userA, lo),
+          eq(schema.conversations.userB, hi),
+          eq(schema.conversations.isRestricted, true),
+        ),
+      )
+      .returning({ id: schema.conversations.id });
+    return rows[0] ?? null;
+  }
+
   async delete(convId: string): Promise<void> {
     await this.db
       .delete(schema.conversations)
