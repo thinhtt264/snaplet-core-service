@@ -1,6 +1,7 @@
 import {
   Injectable,
   InternalServerErrorException,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -32,6 +33,8 @@ import type { User } from '@modules/users/schemas/user.schema';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
@@ -193,42 +196,57 @@ export class AuthService {
     const googlePayload = await this.verifyGoogleToken(dto.idToken);
     const { email, googleId, firstName, lastName } = googlePayload;
 
-    // CASE A: already has Google account linked
-    let user = await this.userRepository.findByGoogleId(googleId);
-    if (user) {
-      const tokens = await this.issueTokensForUser(user, deviceId);
-      return {
-        ...tokens,
-        requiresOnboarding: user.isOnboardingComplete === false,
-      };
-    }
+    try {
+      // CASE A: already has Google account linked
+      let user = await this.userRepository.findByGoogleId(googleId);
+      if (user) {
+        const tokens = await this.issueTokensForUser(user, deviceId);
+        return {
+          ...tokens,
+          requiresOnboarding: user.isOnboardingComplete === false,
+        };
+      }
 
-    // CASE B: local account exists with same email -> link & login
-    const existingLocal = await this.userRepository.findActiveByEmail(email);
-    if (existingLocal) {
-      user = await this.userRepository.linkGoogleId(
-        existingLocal._id.toString(),
+      // CASE B: local account exists with same email -> link & login
+      const existingLocal = await this.userRepository.findActiveByEmail(email);
+      if (existingLocal) {
+        user = await this.userRepository.linkGoogleId(
+          existingLocal._id.toString(),
+          googleId,
+        );
+        const tokens = await this.issueTokensForUser(user, deviceId);
+        return { ...tokens, requiresOnboarding: false };
+      }
+
+      // CASE C: brand new user -> create partial account with defaults, require onboarding
+      const username = await this.generateDefaultUsername();
+      const rawFirst = firstName.trim();
+      const rawLast = lastName.trim();
+      // Google accounts may omit given_name or family_name; cross-fill so the
+      // required Mongoose validator passes. User corrects during onboarding.
+      const nameFallback = `empty_name`;
+      const resolvedFirstName = rawFirst || rawLast || nameFallback;
+      const resolvedLastName = rawLast || rawFirst || nameFallback;
+      user = await this.userRepository.create({
+        email,
         googleId,
-      );
+        authProvider: 'google',
+        password: null,
+        firstName: resolvedFirstName,
+        lastName: resolvedLastName,
+        username,
+        isOnboardingComplete: false,
+      });
+
       const tokens = await this.issueTokensForUser(user, deviceId);
-      return { ...tokens, requiresOnboarding: false };
+      return { ...tokens, requiresOnboarding: true };
+    } catch (error) {
+      this.logger.error(
+        `Google sign-in failed [email=${email}]: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+      throw error;
     }
-
-    // CASE C: brand new user -> create partial account with defaults, require onboarding
-    const username = await this.generateDefaultUsername();
-    user = await this.userRepository.create({
-      email,
-      googleId,
-      authProvider: 'google',
-      password: null,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      username,
-      isOnboardingComplete: false,
-    });
-
-    const tokens = await this.issueTokensForUser(user, deviceId);
-    return { ...tokens, requiresOnboarding: true };
   }
 
   generateAccessToken(
